@@ -300,13 +300,19 @@ non-additive.
 **Q2c Monthly cume** — Cols: Station, Month, AAS, TLH, CUME, SS, TSL.
 1st of month 8am CT. ~4 rows/month.
 
-**Q3 Monthly geography** — Cols: Station, Month, Country, Region, City, AAS,
-TLH, CUME, SS, TSL. Triton dimension = Month (not Day). 1st of month 8:15am CT.
-~800 rows/month.
+**Q3 Monthly geography** — Cols: Station, Month, City, DMA, AAS, TLH, CUME, SS,
+TSL. Triton dimension = Month (not Day). 1st of month 8:15am CT. ~800 rows/month.
+Triton groups by DMA (Nielsen Designated Market Area) rather than Country/Region —
+actually more useful since DMA is the unit advertisers, grant funders, and Nielsen
+all speak in. Top DMAs from initial export: Chicago, Milwaukee, NYC, Green
+Bay-Appleton, LA, Madison.
 
-**Q4 Monthly device** — Cols: Station, Month, Device Category, OS, Player, AAS,
+**Q4 Monthly device** — Cols: Station, Month, Device family, Device, Player, AAS,
 TLH, CUME, SS, TSL. Triton dimension = Month (not Day). 1st of month 8:30am CT.
-~50-200 rows/month.
+~50-200 rows/month. 'Device' stores concrete device names (Amazon Echo, iPhone,
+Chromecast) rather than OS names — more meaningful for the underwriting story.
+Device families seen: Mobile Device, Desktop/Laptop, Smart Speaker, Digital Media
+Player, Smart TV, Car Entertainment System, plus Unspecified/Unknown buckets.
 
 ---
 
@@ -421,13 +427,14 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 001_initial.sql        ← APPLIED — all source schemas + dim + marts skeleton
 │   ├── 002_wms_facts.sql      ← APPLIED — Triton fact tables
 │   ├── 003_wms_facts_revision.sql  ← APPLIED — monthly geo/device + weekly cume
-│   ├── 004_funraise.sql       ← PLANNED (Phase 9) — Funraise tables
-│   ├── 005_meta.sql           ← PLANNED (Phase 10) — Both Meta schemas
-│   ├── 006_ga.sql             ← PLANNED (Phase 10)
-│   ├── 007_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
-│   ├── 008_underwriting.sql   ← PLANNED (Phase 11+)
-│   ├── 009_grants.sql         ← PLANNED (Phase 11+)
-│   ├── 010_events.sql         ← PLANNED (Phase 11+)
+│   ├── 004_wms_facts_revision_geo_device.sql  ← APPLIED — geo City/DMA + device family/device
+│   ├── 005_funraise.sql       ← PLANNED (Phase 9) — Funraise tables
+│   ├── 006_meta.sql           ← PLANNED (Phase 10) — Both Meta schemas
+│   ├── 007_ga.sql             ← PLANNED (Phase 10)
+│   ├── 008_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
+│   ├── 009_underwriting.sql   ← PLANNED (Phase 11+)
+│   ├── 010_grants.sql         ← PLANNED (Phase 11+)
+│   ├── 011_events.sql         ← PLANNED (Phase 11+)
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
