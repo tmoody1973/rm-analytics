@@ -554,12 +554,12 @@ Never commit secrets. Never paste them in chat without rotating after.
 ### Streaming
 | Query | Loaded | Window | Rows | Validated |
 |---|---|---|---|---|
-| Q1 Hourly | [ ] | | | [ ] |
-| Q2a Daily cume | [ ] | | | [ ] |
-| Q2b Weekly cume | [ ] | | | [ ] |
-| Q2c Monthly cume | [ ] | | | [ ] |
-| Q3 Monthly Geography | [ ] | | | [ ] |
-| Q4 Monthly Device | [ ] | | | [ ] |
+| Q1 Hourly | [x] | 2024-01-01 to 2026-05-17 | 60204 | [ ] |
+| Q2a Daily cume | [x] | 2024-01-01 to 2026-05-17 | 2787 | [ ] |
+| Q2b Weekly cume | [x] | 2024-01-01 to 2026-05-11 | 399 | [ ] |
+| Q2c Monthly cume | [x] | 2024-01-01 to 2026-05-01 | 94 | [ ] |
+| Q3 Monthly Geography | [x] | 2024-01-01 to 2026-05-01 | 51022 | [ ] |
+| Q4 Monthly Device | [x] | 2024-01-01 to 2026-05-01 | 3434 | [ ] |
 
 ### Other sources
 | Source | Loaded | Method | Notes |
