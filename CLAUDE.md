@@ -554,7 +554,7 @@ Never commit secrets. Never paste them in chat without rotating after.
 ### Streaming
 | Query | Loaded | Window | Rows | Validated |
 |---|---|---|---|---|
-| Q1 Hourly | [x] | 2024-01-01 to 2026-05-16 | ~60130 | [x] |
+| Q1 Hourly | [ ] | | | [ ] |
 | Q2a Daily cume | [ ] | | | [ ] |
 | Q2b Weekly cume | [ ] | | | [ ] |
 | Q2c Monthly cume | [ ] | | | [ ] |
