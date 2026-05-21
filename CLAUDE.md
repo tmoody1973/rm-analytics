@@ -54,7 +54,7 @@ what the vendor sends. The `marts` schema is where joins happen for dashboards.
 neondb
 │
 ├── ────── STREAMING ───────
-├── wms                     ← Triton streaming facts (Q1, Q2a, Q2c, Q3, Q4)
+├── wms                     ← Triton streaming facts (Q1, Q2a, Q2b, Q2c, Q3, Q4)
 │
 ├── ────── AUDIENCE / WEB / SOCIAL ──────
 ├── ga                      ← Google Analytics 4
@@ -99,8 +99,13 @@ They feed into `finance.fact_revenue_monthly` via the `marts` layer.
 ## Schemas: what goes in each
 
 ### `wms` (Triton streaming)
-Already documented below in "Query catalog." Five fact tables. Note that
+Already documented below in "Query catalog." Six fact tables. Note that
 Triton a2x ad-delivery data is OUT OF SCOPE for this build.
+
+**Grain decision:** CUME is non-additive, so we query it natively at the four
+grains we report at: hourly (Q1 embed), daily (Q2a), weekly (Q2b), monthly
+(Q2c). Geo and device data is captured monthly only, since 95% of audience and
+underwriting questions are inherently monthly.
 
 ### `funraise`
 Mirrors Funraise's API shape:
@@ -249,7 +254,7 @@ Empty strings → 0 on parse.
 
 ## Query catalog (streaming)
 
-All five queries land in `wms.fact_*`. Each has both a backfill loader
+All six queries land in `wms.fact_*`. Each has both a backfill loader
 (historical, local) and a webhook route (daily, Fly.io). Same function,
 two entry points.
 
@@ -257,30 +262,51 @@ two entry points.
 |---|---|---|---|---|
 | Q1 | Hourly listening | `wms.fact_hourly_listening` | `load_q1_hourly.py` | `[WMS-Q1-HOURLY]` |
 | Q2a | Daily cume | `wms.fact_daily_cume` | `load_q2a_daily_cume.py` | `[WMS-Q2A-CUME-DAILY]` |
+| Q2b | Weekly cume | `wms.fact_weekly_cume` | `load_q2b_weekly_cume.py` | `[WMS-Q2B-CUME-WEEKLY]` |
 | Q2c | Monthly cume | `wms.fact_monthly_cume` | `load_q2c_monthly_cume.py` | `[WMS-Q2C-CUME-MONTHLY]` |
-| Q3 | Daily geography | `wms.fact_daily_geo` | `load_q3_geo.py` | `[WMS-Q3-GEO]` |
-| Q4 | Daily device/platform | `wms.fact_daily_device` | `load_q4_device.py` | `[WMS-Q4-DEVICE]` |
+| Q3 | Monthly geography | `wms.fact_monthly_geo` | `load_q3_monthly_geo.py` | `[WMS-Q3-GEO]` |
+| Q4 | Monthly device/platform | `wms.fact_monthly_device` | `load_q4_monthly_device.py` | `[WMS-Q4-DEVICE]` |
 
-Q2b (weekly cume) and Q7 (session duration buckets) deferred — derive in SQL
-from Q1/Q2a.
+Q7 (session duration buckets) deferred — derive in SQL from Q1.
+
+### Saved-query inventory & schedule
+
+Each of the 6 queries exists twice in Triton: a **Bulk** saved query (one-time
+historical export, run locally for backfill) and a **Scheduled** saved query
+(recurring email → AgentMail → Fly.io webhook). That's **6 Bulk + 6 Scheduled =
+12 saved queries** total.
+
+| Query | Cadence | Trigger (CT) | Webhook tag |
+|---|---|---|---|
+| Q1 Hourly | Daily | 6:00am | `[WMS-Q1-HOURLY]` |
+| Q2a Daily cume | Daily | 6:15am | `[WMS-Q2A-CUME-DAILY]` |
+| Q2b Weekly cume | Weekly (Mon) | 6:30am | `[WMS-Q2B-CUME-WEEKLY]` |
+| Q2c Monthly cume | Monthly (1st) | 8:00am | `[WMS-Q2C-CUME-MONTHLY]` |
+| Q3 Monthly geography | Monthly (1st) | 8:15am | `[WMS-Q3-GEO]` |
+| Q4 Monthly device | Monthly (1st) | 8:30am | `[WMS-Q4-DEVICE]` |
 
 ### Per-query metadata
 
 **Q1 Hourly** — Cols: Station, Date Hour, AAS, TLH, CUME, SS, TSL. Daily 6:00am CT.
 ~96 rows/day. Backfill ~60K rows (2024-01-01 onward).
 
-**Q2a Daily cume** — Cols: Station, Date, Unique Listeners, TLH, ATL, CUME.
+**Q2a Daily cume** — Cols: Station, Day, AAS, TLH, CUME, SS, TSL.
 Daily 6:15am CT. ~4 rows/day. Cume is non-additive.
 
-**Q2c Monthly cume** — Cols: Station, Month, Unique Listeners, TLH, CUME.
+**Q2b Weekly cume** — Cols: Station, Week, AAS, TLH, CUME, SS, TSL. Weekly,
+Mon 6:30am CT. ~4 rows/week. Backfill ~520 rows (2024-01-01 onward). Cume is
+non-additive.
+
+**Q2c Monthly cume** — Cols: Station, Month, AAS, TLH, CUME, SS, TSL.
 1st of month 8am CT. ~4 rows/month.
 
-**Q3 Daily geography** — Cols: Station, Date, Country, Region, City, Sessions
-Started, TLH, Unique Listeners. Daily 6:30am CT. ~800 rows/day. Backfill
-chunked into 6-month windows.
+**Q3 Monthly geography** — Cols: Station, Month, Country, Region, City, AAS,
+TLH, CUME, SS, TSL. Triton dimension = Month (not Day). 1st of month 8:15am CT.
+~800 rows/month.
 
-**Q4 Daily device** — Cols: Station, Date, Device Category, OS, Player,
-Sessions Started, TLH, Unique Listeners. Daily 6:45am CT. ~50-200 rows/day.
+**Q4 Monthly device** — Cols: Station, Month, Device Category, OS, Player, AAS,
+TLH, CUME, SS, TSL. Triton dimension = Month (not Day). 1st of month 8:30am CT.
+~50-200 rows/month.
 
 ---
 
@@ -374,7 +400,7 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 - (9:00am CT) Hex projects refresh from `marts.*` views via scheduled runs
 
 ### Morning checks
-- Slack channel for ✅ from each source. Triton (5 messages), Funraise
+- Slack channel for ✅ from each source. Triton (2 messages most days, 3 on Mondays incl. Q2b weekly, 6 on the 1st of the month incl. all monthly queries), Funraise
   (variable, only on transactions), Coupler (per importer).
 - If anything ❌: `flyctl logs --app rm-data-loader` for stack trace.
 
@@ -392,24 +418,26 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 ├── fly.toml
 │
 ├── schema/
-│   ├── 001_initial.sql        ← all source schemas + dim + marts skeleton
-│   ├── 002_wms_facts.sql      ← Triton fact tables
-│   ├── 003_funraise.sql       ← Funraise tables
-│   ├── 004_meta.sql           ← Both Meta schemas
-│   ├── 005_ga.sql
-│   ├── 006_finance.sql        ← Finance + budget tables
-│   ├── 007_underwriting.sql
-│   ├── 008_grants.sql
-│   ├── 009_events.sql
-│   └── 100_marts.sql          ← Cross-source views (rebuild often)
+│   ├── 001_initial.sql        ← APPLIED — all source schemas + dim + marts skeleton
+│   ├── 002_wms_facts.sql      ← APPLIED — Triton fact tables
+│   ├── 003_wms_facts_revision.sql  ← APPLIED — monthly geo/device + weekly cume
+│   ├── 004_funraise.sql       ← PLANNED (Phase 9) — Funraise tables
+│   ├── 005_meta.sql           ← PLANNED (Phase 10) — Both Meta schemas
+│   ├── 006_ga.sql             ← PLANNED (Phase 10)
+│   ├── 007_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
+│   ├── 008_underwriting.sql   ← PLANNED (Phase 11+)
+│   ├── 009_grants.sql         ← PLANNED (Phase 11+)
+│   ├── 010_events.sql         ← PLANNED (Phase 11+)
+│   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
 │   ├── _common.py             ← Station map, TSL parse, DB conn, station_code resolver
 │   ├── load_q1_hourly.py
 │   ├── load_q2a_daily_cume.py
+│   ├── load_q2b_weekly_cume.py
 │   ├── load_q2c_monthly_cume.py
-│   ├── load_q3_geo.py
-│   ├── load_q4_device.py
+│   ├── load_q3_monthly_geo.py
+│   ├── load_q4_monthly_device.py
 │   ├── load_funraise_webhook.py
 │   ├── load_funraise_api_pull.py     ← nightly reconciliation
 │   └── load_finance_monthly.py       ← XLSX upload for revenue/budget
@@ -459,7 +487,7 @@ Never commit secrets. Never paste them in chat without rotating after.
 ## Coding conventions
 
 - Python 3.12. Type hints where they help.
-- psycopg2 with `execute_values` for bulk inserts, batches of 5000.
+- psycopg3 (the `psycopg` package, currently 3.3.4) with `cursor.executemany()` or `COPY` for bulk inserts, batches of 5000. Import is `import psycopg`, not `import psycopg2`.
 - Every fact table has `ON CONFLICT (composite_key) DO UPDATE`. Idempotency
   by default.
 - Loaders are pure functions: `def load(file_path_or_payload) -> dict` with
@@ -519,11 +547,12 @@ Never commit secrets. Never paste them in chat without rotating after.
 ### Streaming
 | Query | Loaded | Window | Rows | Validated |
 |---|---|---|---|---|
-| Q1 Hourly | [ ] | | | [ ] |
+| Q1 Hourly | [x] | 2024-01-01 to 2026-05-16 | ~60130 | [x] |
 | Q2a Daily cume | [ ] | | | [ ] |
+| Q2b Weekly cume | [ ] | | | [ ] |
 | Q2c Monthly cume | [ ] | | | [ ] |
-| Q3 Geo | [ ] | | | [ ] |
-| Q4 Device | [ ] | | | [ ] |
+| Q3 Monthly Geography | [ ] | | | [ ] |
+| Q4 Monthly Device | [ ] | | | [ ] |
 
 ### Other sources
 | Source | Loaded | Method | Notes |
