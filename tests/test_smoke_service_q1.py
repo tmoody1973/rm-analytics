@@ -87,7 +87,7 @@ def run() -> None:
         "message": {
             "message_id": "msg_smoke",
             "thread_id": "thr_smoke",
-            "inbox_id": "inb_smoke",
+            "inbox_id": "triton-ingest@agentmail.to",
             "from": "triton@noreply.tritondigital.com",
             "to": ["triton-ingest@agentmail.to"],
             "subject": "Triton WMS export [WMS-Q1-HOURLY] 2026-06-09",

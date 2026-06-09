@@ -30,6 +30,11 @@ from .router import known_tags, resolve
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("rm-data-loader")
 
+# AgentMail webhook subscriptions are account-wide, not inbox-scoped, so the
+# service receives `message.received` events for every inbox on the account.
+# We only want mail to triton-ingest@; everything else is ignored at this layer.
+ALLOWED_INBOX = "triton-ingest@agentmail.to"
+
 app = FastAPI(title="rm-data-loader", version="0.1.0")
 
 
@@ -55,6 +60,11 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
         return {"ignored": True, "event_type": event_type}
 
     message = payload.get("message") or {}
+    inbox_id = message.get("inbox_id")
+    if inbox_id != ALLOWED_INBOX:
+        log.info("ignoring event for inbox=%r", inbox_id)
+        return {"ignored": True, "reason": "wrong inbox", "inbox_id": inbox_id}
+
     subject = message.get("subject") or ""
 
     route = resolve(subject)

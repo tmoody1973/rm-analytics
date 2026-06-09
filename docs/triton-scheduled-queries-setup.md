@@ -164,8 +164,10 @@ Click **Save** / **Add Schedule** to confirm.
 
 - **Maximum 30 scheduled queries per account.** We use 6 — plenty of room.
 - **You cannot schedule a query with a fixed date range.** It must use a
-  **rolling** range like "Yesterday," "Last Week," "Last Month." This is
-  why each section below tells you exactly which range to pick.
+  **rolling** preset. Triton's Date Range dialog offers these presets:
+  `Last day`, `Last full day`, `Last 7 days`, `Last week`, `Last 30 days`,
+  `Last month`, `Last 90 days`. Each section below tells you which preset
+  to use.
 - **Schedule time must be after 11:00 UTC.** This is Triton's rule to make
   sure the previous period's data is fully aggregated before they send.
   All of our times (the earliest is 6:30 a.m. CT = 11:30 UTC in summer)
@@ -191,13 +193,20 @@ per-query differences.
 | **Stations** | WYMSFM, WYMSHD2, 414 Music, Rhythm Lab Radio 24/7 |
 | **Dimensions** | Station, Date Hour |
 | **Metrics** | AAS, TLH, CUME, SS, TSL |
-| **Date range** | Yesterday (the rolling "previous day" option) |
+| **Date range** | `Last day` (the highlighted default preset) |
 | **Schedule interval** | Daily |
 | **Schedule time** | 06:30 Central Time |
 | **Target table in Neon** | `wms.fact_hourly_listening` |
 
 **Why this time:** 06:30 CT = 11:30 UTC (in summer) / 12:30 UTC (in winter),
 both safely past Triton's 11:00 UTC cut-off.
+
+**Heads up on `Last day` semantics:** Triton's streaming data finalizes a
+few days behind real time. When you click `Last day` mid-week, you may see
+the report resolve to a date 2–4 days ago — that's not a bug, it's Triton's
+data-finalization lag. Pick `Last day` anyway and let the scheduled email
+send whatever Triton considers freshest each morning. The loader's
+`ON CONFLICT DO UPDATE` makes repeat sends of the same date a safe no-op.
 
 ### Q2a — Daily Cume
 
@@ -209,9 +218,9 @@ both safely past Triton's 11:00 UTC cut-off.
 | **Stations** | WYMSFM, WYMSHD2, 414 Music, Rhythm Lab Radio 24/7 |
 | **Dimensions** | Station, Day |
 | **Metrics** | AAS, TLH, CUME, SS, TSL |
-| **Date range** | Yesterday |
+| **Date range** | `Last day` (the highlighted default preset) |
 | **Schedule interval** | Daily |
-| **Schedule time** | 06:45 Central Time |
+| **Schedule time** | 07:00 Central Time |
 | **Target table in Neon** | `wms.fact_daily_cume` |
 
 ### Q2b — Weekly Cume
@@ -224,10 +233,10 @@ both safely past Triton's 11:00 UTC cut-off.
 | **Stations** | WYMSFM, WYMSHD2, 414 Music, Rhythm Lab Radio 24/7 |
 | **Dimensions** | Station, Week |
 | **Metrics** | AAS, TLH, CUME, SS, TSL |
-| **Date range** | Last Week (the rolling option, not a fixed week) |
+| **Date range** | `Last week` (the rolling-week preset) |
 | **Schedule interval** | Weekly |
 | **Day of week** | Monday |
-| **Schedule time** | 07:00 Central Time |
+| **Schedule time** | 07:30 Central Time |
 | **Target table in Neon** | `wms.fact_weekly_cume` |
 
 ### Q2c — Monthly Cume
@@ -240,7 +249,7 @@ both safely past Triton's 11:00 UTC cut-off.
 | **Stations** | WYMSFM, WYMSHD2, 414 Music, Rhythm Lab Radio 24/7 |
 | **Dimensions** | Station, Month |
 | **Metrics** | AAS, TLH, CUME, SS, TSL |
-| **Date range** | Last Month |
+| **Date range** | `Last month` |
 | **Schedule interval** | Monthly |
 | **Day of month** | 1 |
 | **Schedule time** | 08:30 Central Time |
@@ -256,10 +265,10 @@ both safely past Triton's 11:00 UTC cut-off.
 | **Stations** | WYMSFM, WYMSHD2, 414 Music, Rhythm Lab Radio 24/7 |
 | **Dimensions** | Station, Month, City, DMA |
 | **Metrics** | AAS, TLH, CUME, SS, TSL |
-| **Date range** | Last Month |
+| **Date range** | `Last month` |
 | **Schedule interval** | Monthly |
 | **Day of month** | 1 |
-| **Schedule time** | 08:45 Central Time |
+| **Schedule time** | 09:00 Central Time |
 | **Target table in Neon** | `wms.fact_monthly_geo` |
 
 **Heads up:** if Triton splits "City" and "DMA" into separate dimension
@@ -278,10 +287,10 @@ header strings.
 | **Stations** | WYMSFM, WYMSHD2, 414 Music, Rhythm Lab Radio 24/7 |
 | **Dimensions** | Station, Month, Device family, Device, Player |
 | **Metrics** | AAS, TLH, CUME, SS, TSL |
-| **Date range** | Last Month |
+| **Date range** | `Last month` |
 | **Schedule interval** | Monthly |
 | **Day of month** | 1 |
-| **Schedule time** | 09:00 Central Time |
+| **Schedule time** | 09:30 Central Time |
 | **Target table in Neon** | `wms.fact_monthly_device` |
 
 ---
@@ -428,15 +437,15 @@ list. Re-deploy.
 - [ ] Q1 — saved as `[WMS-Q1-HOURLY] Hourly Listening (all 4 stations)` +
       scheduled Daily 06:30 CT
 - [ ] Q2a — saved as `[WMS-Q2A-CUME-DAILY] Daily Cume (all 4 stations)` +
-      scheduled Daily 06:45 CT
+      scheduled Daily 07:00 CT
 - [ ] Q2b — saved as `[WMS-Q2B-CUME-WEEKLY] Weekly Cume (all 4 stations)`
-      + scheduled Weekly Monday 07:00 CT
+      + scheduled Weekly Monday 07:30 CT
 - [ ] Q2c — saved as `[WMS-Q2C-CUME-MONTHLY] Monthly Cume (all 4 stations)`
       + scheduled Monthly Day 1 08:30 CT
 - [ ] Q3 — saved as `[WMS-Q3-GEO] Monthly Geography by DMA + City` +
-      scheduled Monthly Day 1 08:45 CT
-- [ ] Q4 — saved as `[WMS-Q4-DEVICE] Monthly Device + Player` +
       scheduled Monthly Day 1 09:00 CT
+- [ ] Q4 — saved as `[WMS-Q4-DEVICE] Monthly Device + Player` +
+      scheduled Monthly Day 1 09:30 CT
 - [ ] First Q1 (or Q2a) run lands in Neon successfully — full chain green
 - [ ] Slack `:white_check_mark:` posted (if Slack is wired)
 

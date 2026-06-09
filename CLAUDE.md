@@ -279,20 +279,22 @@ historical export, run locally for backfill) and a **Scheduled** saved query
 | Query | Cadence | Trigger (CT) | Webhook tag |
 |---|---|---|---|
 | Q1 Hourly | Daily | 6:30am | `[WMS-Q1-HOURLY]` |
-| Q2a Daily cume | Daily | 6:45am | `[WMS-Q2A-CUME-DAILY]` |
-| Q2b Weekly cume | Weekly (Mon) | 7:00am | `[WMS-Q2B-CUME-WEEKLY]` |
+| Q2a Daily cume | Daily | 7:00am | `[WMS-Q2A-CUME-DAILY]` |
+| Q2b Weekly cume | Weekly (Mon) | 7:30am | `[WMS-Q2B-CUME-WEEKLY]` |
 | Q2c Monthly cume | Monthly (1st) | 8:30am | `[WMS-Q2C-CUME-MONTHLY]` |
-| Q3 Monthly geography | Monthly (1st) | 8:45am | `[WMS-Q3-GEO]` |
-| Q4 Monthly device | Monthly (1st) | 9:00am | `[WMS-Q4-DEVICE]` |
+| Q3 Monthly geography | Monthly (1st) | 9:00am | `[WMS-Q3-GEO]` |
+| Q4 Monthly device | Monthly (1st) | 9:30am | `[WMS-Q4-DEVICE]` |
 
 **Note on times:** Triton requires schedule times after 11:00 UTC for data
-completeness (per their official Save & Schedule docs). 6:00am CDT = 11:00 UTC
-exactly — right at the boundary. All 6 times above are at least 30 min past
-the cut-off so they're safe year-round across CST/CDT transitions. Also:
-Triton uses the saved-query NAME as the email subject (subject is not
-customizable), so every saved query name must start with its bracketed tag,
-e.g. `[WMS-Q1-HOURLY] Hourly Listening (all 4 stations)`. Beginner setup
-walkthrough lives in `docs/triton-scheduled-queries-setup.md`.
+completeness (per their official Save & Schedule docs), and Triton's
+schedule-time picker only allows 30-minute granularity (no 6:45 / 8:45).
+6:00am CDT = 11:00 UTC exactly — right at the boundary. All 6 times above
+are at least 30 min past the cut-off so they're safe year-round across
+CST/CDT transitions. Also: Triton uses the saved-query NAME as the email
+subject (subject is not customizable), so every saved query name must
+start with its bracketed tag, e.g. `[WMS-Q1-HOURLY] Hourly Listening
+(all 4 stations)`. Beginner setup walkthrough lives in
+`docs/triton-scheduled-queries-setup.md`.
 
 ### Per-query metadata
 
@@ -300,24 +302,24 @@ walkthrough lives in `docs/triton-scheduled-queries-setup.md`.
 ~96 rows/day. Backfill ~60K rows (2024-01-01 onward).
 
 **Q2a Daily cume** — Cols: Station, Day, AAS, TLH, CUME, SS, TSL.
-Daily 6:45am CT. ~4 rows/day. Cume is non-additive.
+Daily 7:00am CT. ~4 rows/day. Cume is non-additive.
 
 **Q2b Weekly cume** — Cols: Station, Week, AAS, TLH, CUME, SS, TSL. Weekly,
-Mon 7:00am CT. ~4 rows/week. Backfill ~520 rows (2024-01-01 onward). Cume is
+Mon 7:30am CT. ~4 rows/week. Backfill ~520 rows (2024-01-01 onward). Cume is
 non-additive.
 
 **Q2c Monthly cume** — Cols: Station, Month, AAS, TLH, CUME, SS, TSL.
 1st of month 8:30am CT. ~4 rows/month.
 
 **Q3 Monthly geography** — Cols: Station, Month, City, DMA, AAS, TLH, CUME, SS,
-TSL. Triton dimension = Month (not Day). 1st of month 8:45am CT. ~800 rows/month.
+TSL. Triton dimension = Month (not Day). 1st of month 9:00am CT. ~800 rows/month.
 Triton groups by DMA (Nielsen Designated Market Area) rather than Country/Region —
 actually more useful since DMA is the unit advertisers, grant funders, and Nielsen
 all speak in. Top DMAs from initial export: Chicago, Milwaukee, NYC, Green
 Bay-Appleton, LA, Madison.
 
 **Q4 Monthly device** — Cols: Station, Month, Device family, Device, Player, AAS,
-TLH, CUME, SS, TSL. Triton dimension = Month (not Day). 1st of month 9:00am CT.
+TLH, CUME, SS, TSL. Triton dimension = Month (not Day). 1st of month 9:30am CT.
 ~50-200 rows/month. 'Device' stores concrete device names (Amazon Echo, iPhone,
 Chromecast) rather than OS names — more meaningful for the underwriting story.
 Device families seen: Mobile Device, Desktop/Laptop, Smart Speaker, Digital Media
