@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.join(ROOT, "loaders"))
 os.environ.setdefault("AGENTMAIL_WEBHOOK_SECRET", "whsec_" + "A" * 40)
 os.environ.setdefault("AGENTMAIL_API_KEY", "smoke-test-key")
 os.environ.pop("SLACK_WEBHOOK_URL", None)
+os.environ.pop("NOTIFY_EMAIL_TO", None)  # belt-and-suspenders: no test mail to a real inbox
 
 from fastapi.testclient import TestClient  # noqa: E402
 from svix.webhooks import Webhook  # noqa: E402

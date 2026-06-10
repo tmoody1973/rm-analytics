@@ -25,7 +25,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from svix.webhooks import WebhookVerificationError
 
-from . import slack
+from . import email, slack
 from .agentmail_client import fetch_attachment_bytes
 from .auth import verify_agentmail
 from .router import known_tags, resolve
@@ -78,20 +78,20 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
 
     attachment = _pick_data_attachment(message.get("attachments") or [])
     if attachment is None:
-        slack.post_failure(route.tag, "no csv/xlsx/zip attachment on message")
+        _notify_failure(route.tag, "no csv/xlsx/zip attachment on message")
         raise HTTPException(status_code=422, detail="no data attachment")
 
     inbox_id = message.get("inbox_id")
     message_id = message.get("message_id")
     if not inbox_id or not message_id:
-        slack.post_failure(route.tag, "missing inbox_id/message_id")
+        _notify_failure(route.tag, "missing inbox_id/message_id")
         raise HTTPException(status_code=422, detail="missing inbox/message id")
 
     try:
         blob = fetch_attachment_bytes(inbox_id, message_id, attachment["attachment_id"])
     except Exception as exc:
         log.exception("attachment fetch failed")
-        slack.post_failure(route.tag, f"attachment fetch failed: {exc}")
+        _notify_failure(route.tag, f"attachment fetch failed: {exc}")
         raise HTTPException(status_code=502, detail="attachment fetch failed") from exc
 
     filename = (attachment.get("filename") or "").lower()
@@ -99,7 +99,7 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
         try:
             blob, inner_name = _extract_data_from_zip(blob)
         except ValueError as exc:
-            slack.post_failure(route.tag, f"zip extraction failed: {exc}")
+            _notify_failure(route.tag, f"zip extraction failed: {exc}")
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         suffix = "." + inner_name.rsplit(".", 1)[-1].lower()
     elif "." in filename:
@@ -115,7 +115,7 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
         stats = route.loader(str(tmp_path))
     except Exception as exc:
         log.exception("loader failed for %s", route.tag)
-        slack.post_failure(route.tag, f"loader failed: {exc}")
+        _notify_failure(route.tag, f"loader failed: {exc}")
         raise HTTPException(status_code=500, detail="loader failed") from exc
     finally:
         try:
@@ -124,8 +124,21 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
             pass
 
     log.info("loaded %s: %s", route.tag, stats)
-    slack.post_success(route.tag, stats)
+    _notify_success(route.tag, stats)
     return {"ok": True, "tag": route.tag, "stats": stats}
+
+
+def _notify_success(tag: str, stats: dict[str, Any]) -> None:
+    """Fan-out success to every configured channel. Each channel is a no-op
+    if its env var isn't set, so dev/local stays silent."""
+    slack.post_success(tag, stats)
+    email.post_success(tag, stats)
+
+
+def _notify_failure(tag: str, err: str) -> None:
+    """Fan-out failure to every configured channel."""
+    slack.post_failure(tag, err)
+    email.post_failure(tag, err)
 
 
 _DATA_SUFFIXES = (".csv", ".xlsx", ".zip")
