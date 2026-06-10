@@ -20,6 +20,7 @@ from _common import (
     coerce_int,
     get_db_connection,
     parse_tsl,
+    read_export,
     resolve_station,
 )
 
@@ -36,7 +37,7 @@ def load(file_path: str) -> dict:
     """Load a Q2c monthly-cume export into wms.fact_monthly_cume. Returns stats."""
     start = time.time()
 
-    df = pd.read_excel(file_path)
+    df = read_export(file_path)
     assert_columns(df, EXPECTED_COLS, QUERY_NAME)
 
     rows: list[tuple] = []

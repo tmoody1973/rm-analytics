@@ -64,15 +64,23 @@ _ROUTES: dict[str, Route] = {
     ),
 }
 
-_TAG_RE = re.compile(r"\[WMS-[A-Z0-9-]+\]")
+_TAG_RE = re.compile(r"WMS-[A-Z0-9-]+")
 
 
 def find_tag(subject: str) -> str | None:
-    """Return the first [WMS-...] tag in a subject line, or None."""
+    """Return the canonical [WMS-...] tag from a subject line, or None.
+
+    Lenient about brackets and prefixes — Gmail forwarding strips the
+    brackets and prepends "Fwd: " when a Triton report is auto-forwarded,
+    so we match the raw tag string anywhere in the subject and rebuild the
+    bracketed form ourselves before looking it up in _ROUTES.
+    """
     if not subject:
         return None
     match = _TAG_RE.search(subject)
-    return match.group(0) if match else None
+    if match is None:
+        return None
+    return f"[{match.group(0).rstrip('-')}]"
 
 
 def resolve(subject: str) -> Route | None:

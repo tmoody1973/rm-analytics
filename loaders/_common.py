@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 
+import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
@@ -79,6 +80,19 @@ def coerce_str(value: object) -> str:
     if _is_blank(value):
         return ""
     return str(value).strip()
+
+
+def read_export(file_path: str) -> "pd.DataFrame":
+    """Read a Triton export, auto-detecting CSV vs XLSX by extension.
+
+    Triton's scheduled queries default to CSV (wrapped in a ZIP when forwarded
+    through Gmail), while bulk/historical exports come down as XLSX. Both share
+    the same column headers, so the only thing that changes is the reader.
+    """
+    p = str(file_path).lower()
+    if p.endswith(".csv"):
+        return pd.read_csv(file_path)
+    return pd.read_excel(file_path)
 
 
 def parse_tsl(s: object) -> float:
