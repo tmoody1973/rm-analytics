@@ -19,6 +19,11 @@
 
 -- Daily page/profile-level metrics. Grain: (date, page_id).
 -- For Instagram, page_id holds the IG account id and platform distinguishes.
+--
+-- NOTE on `impressions`: Meta deprecated page-level impression metrics in the
+-- Graph API (2024). Expect this column to arrive NULL/0 for Facebook pages —
+-- `reach` is the reliable page-level metric. Kept for forward-compat and for
+-- Instagram, where impressions are still returned.
 CREATE TABLE IF NOT EXISTS meta_organic.fact_page_daily (
     date            DATE        NOT NULL,
     page_id         TEXT        NOT NULL,
@@ -75,12 +80,13 @@ CREATE TABLE IF NOT EXISTS meta_ads.fact_ad_insights_daily (
     ad_account_id TEXT        NOT NULL,
     impressions   BIGINT      NOT NULL DEFAULT 0,
     reach         BIGINT      NOT NULL DEFAULT 0,
-    clicks        BIGINT      NOT NULL DEFAULT 0,
-    spend         NUMERIC     NOT NULL DEFAULT 0,
-    cpm           NUMERIC     NOT NULL DEFAULT 0,
-    cpc           NUMERIC     NOT NULL DEFAULT 0,
-    conversions   BIGINT      NOT NULL DEFAULT 0,
-    loaded_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    clicks            BIGINT      NOT NULL DEFAULT 0,
+    spend             NUMERIC     NOT NULL DEFAULT 0,
+    cpm               NUMERIC     NOT NULL DEFAULT 0,
+    cpc               NUMERIC     NOT NULL DEFAULT 0,
+    conversions       BIGINT      NOT NULL DEFAULT 0,
+    conversion_value  NUMERIC     NOT NULL DEFAULT 0,  -- purchase/action value for true ROAS
+    loaded_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (date, ad_id)
 );
 
