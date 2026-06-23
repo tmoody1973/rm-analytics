@@ -441,12 +441,13 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 004_wms_facts_revision_geo_device.sql  ← APPLIED — geo City/DMA + device family/device
 │   ├── 005_wms_cume_revision.sql  ← APPLIED — daily/monthly cume → 5-metric shape
 │   ├── 006_funraise.sql       ← PLANNED (Phase 9) — Funraise tables
-│   ├── 007_meta.sql           ← PLANNED (Phase 10) — Both Meta schemas
-│   ├── 008_ga.sql             ← PLANNED (Phase 10)
-│   ├── 009_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
-│   ├── 010_underwriting.sql   ← PLANNED (Phase 11+)
-│   ├── 011_grants.sql         ← PLANNED (Phase 11+)
-│   ├── 012_events.sql         ← PLANNED (Phase 11+)
+│   ├── 007_meta.sql           ← APPLIED — meta_organic + meta_ads tables
+│   ├── 008_ga.sql             ← APPLIED — GA4 sessions/events/pages
+│   ├── 009_email_esp.sql      ← APPLIED — Mailchimp campaigns/lists/subscriber events
+│   ├── 010_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
+│   ├── 011_underwriting.sql   ← PLANNED (Phase 11+)
+│   ├── 012_grants.sql         ← PLANNED (Phase 11+)
+│   ├── 013_events.sql         ← PLANNED (Phase 11+)
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
