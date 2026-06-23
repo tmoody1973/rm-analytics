@@ -11,6 +11,16 @@
 --
 -- Source schema mirrors GA4/Coupler. No cross-source joins — those live in
 -- marts. loaded_at is audit only, never part of a PK.
+--
+-- GRAIN STRATEGY (mirrors the streaming side's additive/non-additive logic):
+--   * Additive metrics (sessions, page_views, event_count) are stored DAILY
+--     (and HOURLY where useful) and rolled up to weekly/monthly in marts via
+--     GROUP BY. Do NOT create weekly/monthly tables for these.
+--   * Non-additive uniques (users / active users) CANNOT be summed across days
+--     — summing daily users overcounts repeat visitors, exactly like streaming
+--     CUME. If a dashboard needs weekly/monthly UNIQUE users, pull that grain
+--     NATIVELY from GA4 (a dedicated weekly/monthly importer); never sum daily.
+--     Deferred until a dashboard requires it.
 
 -- ---------------------------------------------------------------------------
 -- ga.fact_sessions_daily — ACQUISITION
@@ -29,6 +39,38 @@ CREATE TABLE IF NOT EXISTS ga.fact_sessions_daily (
     bounce_rate           NUMERIC     NOT NULL DEFAULT 0,
     loaded_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (date, property_id, source_medium)
+);
+
+-- ---------------------------------------------------------------------------
+-- ga.fact_sessions_hourly — DAYPART ALIGNMENT with streaming Q1
+-- Grain: (date, hour, property). Additive traffic by hour so web activity can
+-- be overlaid on Triton's hourly listening. `users` is non-additive across
+-- hours — treat as "active users in that hour", don't sum to a daily unique.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ga.fact_sessions_hourly (
+    date          DATE        NOT NULL,
+    hour          INT         NOT NULL,               -- 0–23, local property TZ
+    property_id   TEXT        NOT NULL,
+    sessions      BIGINT      NOT NULL DEFAULT 0,
+    users         BIGINT      NOT NULL DEFAULT 0,
+    page_views    BIGINT      NOT NULL DEFAULT 0,
+    loaded_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (date, hour, property_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- ga.fact_events_hourly — EVENTS BY DAYPART
+-- Grain: (date, hour, property, event_name). Lets you see stream_start_click /
+-- donate_click spikes by hour against the streaming daypart curve.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ga.fact_events_hourly (
+    date          DATE        NOT NULL,
+    hour          INT         NOT NULL,
+    property_id   TEXT        NOT NULL,
+    event_name    TEXT        NOT NULL,
+    event_count   BIGINT      NOT NULL DEFAULT 0,
+    loaded_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (date, hour, property_id, event_name)
 );
 
 -- ---------------------------------------------------------------------------
@@ -118,3 +160,7 @@ CREATE INDEX IF NOT EXISTS ix_ga_pages_property_date
     ON ga.fact_pages_daily (property_id, date);
 CREATE INDEX IF NOT EXISTS ix_ga_events_property_date
     ON ga.fact_events_daily (property_id, date);
+CREATE INDEX IF NOT EXISTS ix_ga_sessions_hourly_property_date
+    ON ga.fact_sessions_hourly (property_id, date);
+CREATE INDEX IF NOT EXISTS ix_ga_events_hourly_property_date
+    ON ga.fact_events_hourly (property_id, date);
