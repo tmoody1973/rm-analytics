@@ -27,7 +27,7 @@ The software is close to free. The one paid tool is the service that pulls data
 in automatically, about $65 a month. The database and the dashboard tool run on
 free tiers for now. As we roll the app out to the full staff, those will move
 to paid tiers, so a realistic steady-state budget is roughly
-**$3,000 to $8,000 a year** in tooling.
+**$3,000 to $8,000 a year** in tooling. But because of nonprofit rates, we are looking at less than $1000/year
 
 The larger investment is the build itself, which we're doing in-house with
 AI-assisted development rather than hiring it out.
@@ -41,7 +41,7 @@ thing (industry estimates, not quotes):
   $2,000 to $8,000 a month retainer to maintain it.
 - **Buying the enterprise version of this stack** (the brand-name ingestion,
   warehouse, and dashboard tools): $15,000 to $70,000 a year, every year.
-- **Hiring a data engineer in-house:** $80,000 to $130,000 a year in salary
+- **Hiring a data engineer in-house:** $120,000 to $140,000 a year in salary
   and benefits.
 
 ## Why this matters
