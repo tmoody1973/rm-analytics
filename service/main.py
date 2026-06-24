@@ -15,19 +15,21 @@ Flow:
 """
 from __future__ import annotations
 
+import importlib
 import io
+import json
 import logging
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from svix.webhooks import WebhookVerificationError
 
 from . import email, slack
 from .agentmail_client import fetch_attachment_bytes
-from .auth import verify_agentmail
+from .auth import verify_agentmail, verify_sheet_secret
 from .router import known_tags, resolve
 
 
@@ -126,6 +128,72 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
     log.info("loaded %s: %s", route.tag, stats)
     _notify_success(route.tag, stats)
     return {"ok": True, "tag": route.tag, "stats": stats}
+
+
+# Map a sheet "dataset" to its loader module. Unknown datasets fall back to the
+# generic tabular loader. Loaders resolve because the router import (above) put the
+# loaders/ dir on sys.path.
+_SHEET_LOADERS = {"finance_kpi": "load_finance_sheet"}
+
+
+@app.post("/webhook/sheet")
+async def webhook_sheet(request: Request) -> dict[str, Any]:
+    """Google Sheets 'Sync to Neon' push (finance KPIs today; more later)."""
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    try:
+        verify_sheet_secret(headers)
+    except WebhookVerificationError as exc:
+        log.warning("sheet secret verification failed: %s", exc)
+        raise HTTPException(status_code=401, detail="invalid secret") from exc
+
+    payload = await request.json()
+    dataset = payload.get("dataset") or "?"
+    tag = f"[SHEET-{dataset}]"
+
+    loader = importlib.import_module(_SHEET_LOADERS.get(dataset, "load_sheet_sync"))
+    try:
+        stats = loader.load(payload)
+    except Exception as exc:
+        log.exception("sheet loader failed for dataset=%s", dataset)
+        _notify_failure(tag, f"loader failed: {exc}")
+        raise HTTPException(status_code=500, detail="loader failed") from exc
+
+    log.info("loaded %s: %s", tag, stats)
+    _notify_success(tag, stats)
+    return {"ok": True, "dataset": dataset, "stats": stats}
+
+
+@app.post("/webhook/funraise")
+async def webhook_funraise(request: Request) -> Any:
+    """Funraise transaction webhook -> funraise.fact_transactions.
+
+    On the first (subscription) call Funraise sends an `x-hook-secret` header with
+    an empty body; we echo it back to confirm the subscription. Real events carry a
+    JSON body. TODO: verify the signature with FUNRAISE_WEBHOOK_SECRET once confirmed.
+    """
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    body = await request.body()
+
+    hook_secret = headers.get("x-hook-secret")
+    if hook_secret and not body:
+        return Response(headers={"x-hook-secret": hook_secret})
+
+    try:
+        payload = json.loads(body or b"{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="invalid json") from exc
+
+    loader = importlib.import_module("load_funraise_webhook")
+    try:
+        stats = loader.load(payload)
+    except Exception as exc:
+        log.exception("funraise loader failed")
+        _notify_failure("[FUNRAISE]", f"loader failed: {exc}")
+        raise HTTPException(status_code=500, detail="loader failed") from exc
+
+    log.info("loaded [FUNRAISE]: %s", stats)
+    _notify_success("[FUNRAISE]", stats)
+    return {"ok": True, "stats": stats}
 
 
 def _notify_success(tag: str, stats: dict[str, Any]) -> None:
