@@ -178,6 +178,58 @@ single source of truth so the same definition feeds tooltips AND (later) the AI 
 - AQH Share trend — "Our share of Milwaukee's radio listening over the last 14 surveys."
 - Sustainer MRR — "Predictable monthly giving from sustaining members, against the $50K goal."
 
+## Deep-dive specs (Nielsen / Web / Social)
+
+Each is its own detailed view (a sub-tab or expandable section) that surfaces *all* the
+numbers that matter, grouped by story, every metric carrying a plain-English deck. Respects
+the brand filter.
+
+### 🎧 NIELSEN DEEP DIVE — `nielsen.fact_vital_signs` (RM88 + HYFIN; 57 metrics already loaded)
+The headline AQH share is the tip of the iceberg. Five stories, all in the current P6+ report:
+1. **Reach & audience size** — AQH Persons; Avg Daily & Weekly **Cume** (unique listeners) + Cume
+   **Rating** (cume as % of the market); trend by station.
+   *Deck: "AQH is how many are listening at an average moment; Cume is how many different people tune in at all — our reach."*
+2. **Loyalty — the P1 superfan story** (most under-used). **% of AQH from P1s** (RM88 = **70%**),
+   **P1 weekly TSL vs overall** (RM88 = **6:30 vs 3:15 — P1s listen ~2× longer**), P1 weekly cume
+   (27,900), overall TSL & Occasions trend.
+   *Deck: "P1s are people for whom we're their #1 station. They drive most of our listening and stay far longer — our core."*
+3. **Market position by daypart** — AQH Share + market **rank** (#15), then **share by daypart**
+   bars (M-F 6a-10a / 10a-3p / 3p-7p / 7p-12m, Sa-Su). RM88 over-indexes **evenings (3.6) & weekends
+   (2.9)** vs morning drive (1.8) — a real programming insight.
+   *Deck: "Where we win the day. 88Nine punches hardest at night and on weekends — its discovery programming."*
+4. **Who's listening (demographics)** — **Age** bands (RM88 skews 35–64), **Gender** (RM88 = 63% M /
+   37% F), **Ethnic composition** (Black / Hispanic breakouts / Other). Especially meaningful for HYFIN
+   (Urban Alternative) and RM's civic mission.
+5. **Methodology note** — panelists / In-Tab. *Deck: "PPM panels are small, so a single month wiggles. Watch the trend, not the dot."*
+- Query pattern: filter `section` + `metric` + `station_code` + (latest or all `period_date`).
+- Brand: RM88, HYFIN only. New demos/dayparts as separate reports are uploaded.
+
+### 🌐 WEB DEEP DIVE — `ga.stg_*` (RMORG + HYFIN properties)
+1. **Traffic & reach** — sessions, users, **new vs returning**, trend; by property [`stg_sessions_daily`].
+2. **Where visitors come from** — by **source/medium** (organic search, social, direct, referral) +
+   **organic growth YoY** [`session__session_source___medium`]. *Deck: "Organic = found us through search or links, not ads — the cheapest, stickiest audience."*
+3. **Content** — top pages/articles by views + **engagement time** [`stg_pages_daily`]. *Deck: "The stories pulling people in."*
+4. **Engagement quality** — avg session duration, **engaged sessions**, bounce rate, pages/session.
+5. **Actions that matter (conversions)** — **`audio_action`** = on-site stream plays (~72K/90d),
+   **`mcforms_*`** = newsletter signups, **`support`/`generate_lead`** = donate/support clicks
+   [`stg_events_daily`]. *Deck: "Pressing play, signing up, and giving — the moments that matter, not just pageviews."*
+6. **Device & geo** — device split (mobile/desktop) [`stg_device_daily`], top cities/regions [`stg_geo_daily`].
+7. **App** (optional) — engagement + downloads [`ga.stg_app_*`, `app_store.*`].
+- Brand: RMORG (radiomilwaukee.org) + HYFIN.
+
+### 📱 SOCIAL DEEP DIVE — `meta_organic.stg_*` (per brand × platform)
+1. **Audience growth** — follower count + **net new** over time, by platform × brand
+   [`stg_fb_page_daily.engagement__lifetime_followers`, IG follows]. *Deck: "Are we growing the audience, and where?"*
+2. **Reach & impressions** — unique people reached vs total views [`ig.performance__reach`,
+   `fb.performance__content_views___total` / `unique_content_viewers`]. *Deck: "Reach = different people who saw us; impressions = total views (one person can count many times)."*
+3. **Engagement** — **engagement rate** (engagements ÷ reach), reactions/comments/shares/saves
+   breakdown, IG accounts-engaged. *Deck: "Not just who saw it — who reacted, saved, or shared it."*
+4. **Top posts** — best posts by reach/engagement, with the permalink + thumbnail
+   [`stg_fb_post_lifetime`, `stg_ig_post_lifetime`]. *Deck: "What actually landed this period."*
+5. **Content-type performance** — IG reels vs posts vs carousels, video views/avg watch time.
+6. **Actions** — IG profile/website clicks, FB CTA/contact clicks.
+- Brand: RMORG (Radio Milwaukee FB+IG), HYFIN (FB+IG), 88Nine (IG only), GWML (FB+IG).
+
 ## Architecture changes to make
 
 1. **API (`service/dashboard_api.py`):** add `station_code`/`brand` to every brand-attributable
