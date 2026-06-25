@@ -1,156 +1,159 @@
 """
 Funraise transaction webhook loader.
 
-The Funraise transaction webhook fires on transaction create OR edit. This loader
-upserts each transaction into funraise.fact_transactions ON CONFLICT (transaction_id)
-DO UPDATE, so re-fires (edits, retries) are idempotent.
+Real payload shape confirmed 2026-06-25 via diagnostic logging:
 
-`load(payload: dict) -> dict` where payload is the parsed Funraise webhook body.
+    { "sentAt": int, "event": str,
+      "data": {
+        "id": int,                      # -> transaction_id
+        "donationDate": int,            # epoch (the gift moment)
+        "transaction": { "amount", "sourceAmount", "currency", "status",
+                         "paymentMethod", "transactionId" (gateway), "billingZip" },
+        "supporter": { "id", "firstName"/"lastName"/"name"/"phone" (PII, dropped),
+                       "email", "primaryAddress" },
+        "allocation": { "id", "name" }, # name -> designation/fund
+        "form": { "id", "name" },       # id -> campaign_id
+        "subscription": { "id", ... },  # present => recurring; id -> recurring_plan_id
+        "utm": { "source", "medium", "campaign", ... },
+        "tip": { "amount", "percent" }, # donor-covered fee (best-effort)
+        "fees": ... } }
 
-TODO: confirm the real Funraise payload field names against a sample event and
-finalize `_extract`. The current mapping is a best-guess from CLAUDE.md.
+Upserts the gift into funraise.fact_transactions AND the donor identity/geo into
+funraise.dim_supporters (idempotent on transaction_id / supporter_id). The donor
+upsert touches ONLY identity/geo columns — the lifetime/first/last/active rollup
+fields are owned by the nightly rollup (jobs/refresh_funraise_rollup.py).
+
+PII: names/phone are never stored; email is one-way hashed (hash_email). Mirrors
+the backfill's privacy model (schema/006_funraise.sql).
 """
 from __future__ import annotations
 
 import time
-from datetime import date, datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
-from _common import bulk_upsert, get_db_connection
+from _common import bulk_upsert, get_db_connection, hash_email
 
-TABLE = "funraise.fact_transactions"
-COLUMNS = [
-    "transaction_id",
-    "supporter_id",
-    "campaign_id",
-    "transaction_at",
-    "transaction_date",
-    "amount",
-    "fee",
-    "net",
-    "currency",
-    "payment_method",
-    "recurring",
-    "status",
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "designation",
-    "restricted",
-    "fee_covered",
-    "fee_covered_amount",
-    "refunded",
-    "refunded_amount",
-    "refunded_at",
-    "channel",
-    "recurring_plan_id",
+CENTRAL = ZoneInfo("America/Chicago")
+
+TXN_TABLE = "funraise.fact_transactions"
+TXN_COLUMNS = [
+    "transaction_id", "supporter_id", "campaign_id", "transaction_at",
+    "transaction_date", "amount", "fee", "net", "currency", "payment_method",
+    "recurring", "status", "utm_source", "utm_medium", "utm_campaign",
+    "designation", "restricted", "fee_covered", "fee_covered_amount",
+    "refunded", "refunded_amount", "refunded_at", "channel", "recurring_plan_id",
 ]
-CONFLICT_COLUMNS = ["transaction_id"]
-UPDATE_COLUMNS = [c for c in COLUMNS if c not in CONFLICT_COLUMNS]
+TXN_UPDATE = [c for c in TXN_COLUMNS if c != "transaction_id"]
+
+SUP_TABLE = "funraise.dim_supporters"
+# Only identity/geo here — rollup columns (lifetime_*, *_donation_at, active_12mo)
+# are owned by the nightly rollup and must NOT be clobbered by the webhook.
+SUP_COLUMNS = ["supporter_id", "email_sha256", "city", "state", "postal_code", "country"]
+SUP_UPDATE = [c for c in SUP_COLUMNS if c != "supporter_id"]
 
 
-def _maybe_str(value: object) -> str | None:
-    return None if value is None else str(value)
-
-
-def _opt_bool(value: object) -> bool | None:
-    """Optional bool: missing key -> None (unknown), not False. Accepts JSON
-    bools or string flags ('true'/'1'/'yes')."""
-    if value is None:
+def _s(v: object) -> str | None:
+    if v is None:
         return None
-    if isinstance(value, str):
-        return value.strip().lower() in {"true", "1", "yes", "y", "t"}
-    return bool(value)
+    t = str(v).strip()
+    return t or None
 
 
-def _parse_datetime(value: object) -> datetime | None:
-    """Best-effort ISO datetime -> aware datetime. TODO: confirm Funraise's format."""
-    if not value:
-        return None
+def _num(v: object) -> float | None:
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _epoch_dt(v: object) -> datetime | None:
+    """Funraise epoch (seconds or millis) -> aware UTC datetime."""
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
+        n = int(v)
+    except (ValueError, TypeError):
         return None
+    if n > 1_000_000_000_000:  # milliseconds
+        n /= 1000
+    return datetime.fromtimestamp(n, tz=timezone.utc)
 
 
-def _parse_date(value: object) -> date | None:
-    """Best-effort ISO date/datetime -> date. TODO: confirm Funraise's date format."""
-    if not value:
-        return None
-    text = str(value)
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
-    except ValueError:
-        try:
-            return datetime.strptime(text[:10], "%Y-%m-%d").date()
-        except ValueError:
-            return None
-
-
-def _extract(txn: dict) -> tuple:
-    """Map one Funraise transaction object to a fact_transactions row tuple."""
-    utm = txn.get("utm") or {}
-    status = txn.get("status")
-    when = txn.get("date") or txn.get("createdAt")
+def _extract_txn(data: dict) -> tuple:
+    txn = data.get("transaction") or {}
+    sub = data.get("subscription") or {}
+    alloc = data.get("allocation") or {}
+    form = data.get("form") or {}
+    utm = data.get("utm") or {}
+    fees = data.get("fees") or {}          # rich object: platformFeeAmount, funraiseNetAmount, donorCovered*
+    status = _s(txn.get("status"))
+    when = _epoch_dt(data.get("donationDate"))
+    dcf = fees.get("donorCoveredFees")
     return (
-        str(txn.get("id")),
-        _maybe_str(txn.get("supporterId") or txn.get("supporter_id")),
-        _maybe_str(txn.get("campaignId") or txn.get("campaign_id")),
-        _parse_datetime(when),
-        _parse_date(when),
-        txn.get("amount"),
-        txn.get("fee"),
-        txn.get("net"),
-        txn.get("currency"),
-        txn.get("paymentMethod") or txn.get("payment_method"),
-        bool(txn.get("recurring")),
+        _s(data.get("id")),
+        _s((data.get("supporter") or {}).get("id")),
+        _s(form.get("id")),
+        when,
+        when.astimezone(CENTRAL).date() if when else None,
+        _num(txn.get("amount")),
+        _num(fees.get("platformFeeAmount")),     # fee
+        _num(fees.get("funraiseNetAmount")),     # net (after fees)
+        _s(txn.get("currency")),
+        _s(txn.get("paymentMethod")),
+        bool(sub.get("id")),                     # recurring if a subscription is attached
         status,
-        utm.get("source"),
-        utm.get("medium"),
-        utm.get("campaign"),
-        # --- extras (best-guess field names; confirm against a real payload) ---
-        txn.get("designation") or txn.get("fund") or txn.get("fundName"),
-        _opt_bool(txn.get("restricted")),
-        _opt_bool(txn.get("feeCovered") or txn.get("fee_covered") or txn.get("coveredFee")),
-        txn.get("feeCoveredAmount") or txn.get("coveredFeeAmount"),
-        _opt_bool(txn.get("refunded")) if txn.get("refunded") is not None
-        else (str(status).lower() == "refunded" if status else None),
-        txn.get("refundedAmount") or txn.get("refundAmount"),
-        _parse_date(txn.get("refundedAt") or txn.get("refunded_at")),
-        txn.get("channel") or txn.get("giftChannel") or txn.get("source"),
-        _maybe_str(
-            txn.get("recurringPlanId")
-            or txn.get("subscriptionId")
-            or txn.get("recurring_plan_id")
-        ),
+        _s(utm.get("source")), _s(utm.get("medium")), _s(utm.get("campaign")),
+        _s(alloc.get("name")) or _s(form.get("name")),  # designation / fund
+        None,  # restricted — not in payload
+        bool(dcf) if dcf is not None else None,  # fee_covered (donorCoveredFees)
+        _num(fees.get("donorCoveredFeeAmount")),
+        (status.lower() == "refunded") if status else None,
+        None, None,  # refunded_amount / refunded_at — not in payload
+        None,        # channel — not in payload
+        _s(sub.get("id")),
+    )
+
+
+def _extract_supporter(data: dict) -> tuple | None:
+    sup = data.get("supporter") or {}
+    sid = _s(sup.get("id"))
+    if sid is None:
+        return None
+    addr = sup.get("primaryAddress") or {}
+    txn = data.get("transaction") or {}
+    return (
+        sid,
+        hash_email(sup.get("email")),
+        _s(addr.get("city")),
+        _s(addr.get("state") or addr.get("region")),
+        _s(addr.get("postalCode") or addr.get("zip") or txn.get("billingZip")),
+        _s(addr.get("country")),
     )
 
 
 def load(payload: dict) -> dict:
-    """Upsert one or more Funraise transactions from a webhook body. Returns stats."""
+    """Upsert one Funraise transaction (+ its donor) from a webhook body."""
     start = time.time()
+    data = payload.get("data") or {}
 
-    # A webhook may deliver a single transaction object or a list under "transactions".
-    if isinstance(payload.get("transactions"), list):
-        txns = payload["transactions"]
-    elif payload.get("id"):
-        txns = [payload]
-    else:
-        txns = []
+    if not _s(data.get("id")):
+        return {"query": "funraise webhook", "table": TXN_TABLE,
+                "rows_read": 0, "rows_upserted": 0, "note": "no data.id",
+                "elapsed_sec": round(time.time() - start, 1)}
 
-    rows = [_extract(t) for t in txns]
+    txn_rows = [_extract_txn(data)]
+    sup = _extract_supporter(data)
+    sup_rows = [sup] if sup else []
 
     conn = get_db_connection()
     try:
-        upserted = bulk_upsert(
-            conn, TABLE, COLUMNS, rows, CONFLICT_COLUMNS, UPDATE_COLUMNS
-        )
+        txn_n = bulk_upsert(conn, TXN_TABLE, TXN_COLUMNS, txn_rows, ["transaction_id"], TXN_UPDATE)
+        sup_n = bulk_upsert(conn, SUP_TABLE, SUP_COLUMNS, sup_rows, ["supporter_id"], SUP_UPDATE)
     finally:
         conn.close()
 
     return {
         "query": "funraise webhook",
-        "table": TABLE,
-        "rows_read": len(rows),
-        "rows_upserted": upserted,
+        "table": TXN_TABLE,
+        "event": payload.get("event"),
+        "rows_read": len(txn_rows),
+        "rows_upserted": txn_n,
+        "supporters_upserted": sup_n,
         "elapsed_sec": round(time.time() - start, 1),
     }

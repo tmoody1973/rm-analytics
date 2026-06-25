@@ -197,10 +197,6 @@ async def webhook_funraise(request: Request) -> Any:
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="invalid json") from exc
 
-    # TEMP diagnostic (PII-safe): log the payload shape so we can map Funraise's
-    # real field names. Remove once load_funraise_webhook._extract is finalized.
-    log.info("funraise payload skeleton: %s", json.dumps(_payload_skeleton(payload)))
-
     loader = importlib.import_module("load_funraise_webhook")
     try:
         stats = loader.load(payload)

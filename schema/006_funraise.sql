@@ -26,9 +26,16 @@ CREATE TABLE IF NOT EXISTS funraise.dim_supporters (
     state             TEXT,
     postal_code       TEXT,
     country           TEXT,
-    first_donation_at DATE,
-    lifetime_total    NUMERIC(12, 2),
-    loaded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    -- Derived by the supporter rollup (sums of Complete gifts from
+    -- fact_transactions; recompute after new gifts load). NOTE: *_at dates are
+    -- bounded by our data start (2023-01-01) — pre-2023 first gifts read as Jan 2023.
+    first_donation_at  DATE,
+    last_donation_at   DATE,
+    lifetime_total     NUMERIC(12, 2),   -- all completed gifts (recurring + one-time)
+    lifetime_recurring NUMERIC(12, 2),   -- completed gifts where recurring = true
+    lifetime_onetime   NUMERIC(12, 2),   -- completed gifts where recurring = false
+    active_12mo        BOOLEAN,          -- gave (Complete) within the last 12 months
+    loaded_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Hash index supports the donor <-> ESP-subscriber join in the marts layer.
