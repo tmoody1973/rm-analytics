@@ -238,7 +238,7 @@ dimensions:
     name: Month
     visibility: public
 measures:
-  - id: tlh
+  - id: streaming_tlh
     func: sum
     of: tlh
     type: number
