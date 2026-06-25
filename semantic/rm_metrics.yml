@@ -1,0 +1,356 @@
+# Radio Milwaukee — Hex semantic model (core metrics)
+# =====================================================
+# Canonical definitions for the ~10 metrics leadership cares about. Define once
+# here -> every chart, Explore, and the AI "chat with data" use the SAME logic.
+#
+# HOW TO USE: in Hex, create a Semantic project on the "Neon — Radio Milwaukee"
+# connection -> Modeling Workbench -> paste these documents (they're separated by
+# `---`). Keep this file version-controlled here as the source of truth.
+#
+# IMPORTANT — populated tables: GA / Meta / Email live in their `stg_*` tables
+# (the clean `fact_*` ones are empty). Streaming / Funraise / Nielsen / Finance
+# use our own loaders' `fact_*` tables. This model points at the live ones.
+
+# ─────────────────────────── DONATIONS ───────────────────────────
+id: funraise_transactions
+type: model
+base_sql_table: funraise.fact_transactions
+name: Donations
+description: Every Funraise gift (one-time + recurring monthly charges). One row per transaction.
+visibility: internal
+dimensions:
+  - id: transaction_id
+    type: string
+    expr_sql: transaction_id
+    unique: true
+    name: Transaction ID
+    visibility: internal
+  - id: gift_date
+    type: date
+    expr_sql: transaction_date
+    name: Gift date
+    visibility: public
+  - id: gift_month
+    type: date
+    expr_sql: date_trunc('month', transaction_date)
+    name: Gift month
+    visibility: public
+  - id: is_recurring
+    type: boolean
+    expr_sql: recurring
+    name: Recurring gift?
+    description: True = part of a monthly sustainer plan; false = one-time.
+    visibility: public
+  - id: status
+    type: string
+    expr_sql: status
+    name: Status
+    description: Complete / Failed / Refunded. Only 'Complete' counts as revenue.
+    visibility: public
+  - id: designation
+    type: string
+    expr_sql: designation
+    name: Designation / fund
+    visibility: public
+measures:
+  - id: revenue
+    func_sql: sum(amount) filter (where status = 'Complete')
+    type: number
+    name: Revenue
+    description: Total dollars from COMPLETED gifts (excludes failed + refunded).
+    visibility: public
+  - id: gift_count
+    func_sql: count(*) filter (where status = 'Complete')
+    type: number
+    name: Completed gifts
+    visibility: public
+relations:
+  - id: supporter
+    target: funraise_supporters
+    type: many_to_one
+    join_sql: supporter_id = ${funraise_supporters}.supporter_id
+    visibility: public
+
+---
+id: funraise_supporters
+type: model
+base_sql_table: funraise.dim_supporters
+name: Donors
+description: One row per donor (PII-minimized — no names/email; email is a one-way hash). Rollup fields recomputed nightly.
+visibility: internal
+dimensions:
+  - id: supporter_id
+    type: string
+    expr_sql: supporter_id
+    unique: true
+    name: Donor ID
+    visibility: internal
+  - id: state
+    type: string
+    expr_sql: state
+    name: State
+    visibility: public
+  - id: city
+    type: string
+    expr_sql: city
+    name: City
+    visibility: public
+  - id: is_active_12mo
+    type: boolean
+    expr_sql: active_12mo
+    name: Active donor?
+    description: Gave a completed gift within the last 12 months.
+    visibility: public
+measures:
+  - id: active_donors
+    func_sql: count(*) filter (where active_12mo)
+    type: number
+    name: Active donors
+    description: Distinct donors who gave within the last 12 months.
+    visibility: public
+  - id: total_donors
+    func: count
+    type: number
+    name: Total donors (all time)
+    visibility: public
+  - id: lifetime_giving
+    func: sum
+    of: lifetime_total
+    type: number
+    name: Lifetime giving
+    visibility: public
+  - id: donor_retention_pct
+    func_sql: round(100.0 * count(*) filter (where last_donation_at >= current_date - interval '12 months' and first_donation_at < current_date - interval '12 months') / nullif(count(*) filter (where first_donation_at < current_date - interval '12 months'), 0), 1)
+    type: number
+    name: Donor retention %
+    description: Of donors acquired before the last 12 months, the % who gave again within the last 12 months.
+    visibility: public
+
+---
+id: funraise_subscriptions
+type: model
+base_sql_table: funraise.fact_subscriptions
+name: Sustainer plans
+description: Recurring giving plans (the standing arrangement, not the individual charges).
+visibility: internal
+dimensions:
+  - id: subscription_id
+    type: string
+    expr_sql: subscription_id
+    unique: true
+    visibility: internal
+  - id: sub_status
+    type: string
+    expr_sql: status
+    name: Plan status
+    description: Active / Cancelled / Failed / Redacted.
+    visibility: public
+  - id: frequency
+    type: string
+    expr_sql: frequency
+    name: Frequency
+    visibility: public
+measures:
+  - id: sustainer_mrr
+    func_sql: sum(amount) filter (where status = 'Active' and frequency = 'Monthly')
+    type: number
+    name: Sustainer MRR
+    description: Monthly recurring revenue from ACTIVE monthly plans. Target $50,000.
+    visibility: public
+  - id: active_sustainers
+    func_sql: count(*) filter (where status = 'Active')
+    type: number
+    name: Active sustainers
+    visibility: public
+
+# ─────────────────────────── BROADCAST (NIELSEN) ───────────────────────────
+---
+id: nielsen
+type: model
+base_sql_table: nielsen.fact_vital_signs
+name: Nielsen ratings
+description: Nielsen PPM Vital Signs (broadcast audience). Long/unpivoted — filter by metric + period. NOT streaming.
+visibility: internal
+dimensions:
+  - id: station_code
+    type: string
+    expr_sql: station_code
+    name: Station
+    description: RM88 (88Nine/Radio Milwaukee FM) or HYFIN.
+    visibility: public
+  - id: demo
+    type: string
+    expr_sql: demo
+    name: Demographic
+    visibility: public
+  - id: daypart
+    type: string
+    expr_sql: daypart
+    name: Daypart
+    visibility: public
+  - id: survey_period
+    type: date
+    expr_sql: period_date
+    name: Survey period
+    description: First of the survey month (Holiday book = mid-Dec).
+    visibility: public
+  - id: nielsen_metric
+    type: string
+    expr_sql: metric
+    name: Nielsen metric
+    visibility: public
+measures:
+  - id: aqh_share
+    func_sql: avg(value_numeric) filter (where section = 'Estimates' and metric = 'AQH Share')
+    type: number
+    name: AQH Share
+    description: Average-quarter-hour share of the listening market. Filter to one survey period for a point value.
+    visibility: public
+  - id: aqh_persons
+    func_sql: avg(value_numeric) filter (where section = 'Estimates' and metric = 'AQH Persons')
+    type: number
+    name: AQH Persons
+    visibility: public
+  - id: weekly_cume
+    func_sql: avg(value_numeric) filter (where section = 'Estimates' and metric = 'Avg Weekly Cume Persons')
+    type: number
+    name: Weekly cume (persons)
+    visibility: public
+
+# ─────────────────────────── STREAMING (TRITON) ───────────────────────────
+---
+id: streaming_monthly
+type: model
+base_sql_table: wms.fact_monthly_cume
+name: Streaming (monthly)
+description: Triton streaming audience by station and month. Separate universe from Nielsen broadcast.
+visibility: internal
+dimensions:
+  - id: station_code
+    type: string
+    expr_sql: station_code
+    name: Station
+    description: RM88, HYFIN, RM414, RLR.
+    visibility: public
+  - id: month
+    type: date
+    expr_sql: month_start
+    name: Month
+    visibility: public
+measures:
+  - id: tlh
+    func: sum
+    of: tlh
+    type: number
+    name: Total Listening Hours
+    visibility: public
+  - id: avg_active_sessions
+    func: avg
+    of: aas
+    type: number
+    name: Avg Active Sessions (AAS)
+    visibility: public
+
+# ─────────────────────────── DIGITAL & SOCIAL ───────────────────────────
+---
+id: web_sessions
+type: model
+base_sql_table: ga.stg_sessions_daily
+name: Website sessions
+description: GA4 web sessions. Uses the populated stg table (clean fact_ table is empty).
+visibility: internal
+dimensions:
+  - id: property
+    type: string
+    expr_sql: account__property_name
+    name: Site / property
+    visibility: public
+  - id: session_date
+    type: date
+    expr_sql: report__date
+    name: Date
+    visibility: public
+  - id: source_medium
+    type: string
+    expr_sql: session__session_source___medium
+    name: Source / medium
+    visibility: public
+measures:
+  - id: sessions
+    func: sum
+    of: engagement__sessions
+    type: number
+    name: Sessions
+    visibility: public
+  - id: users
+    func: sum
+    of: acquisition__total_users
+    type: number
+    name: Users
+    visibility: public
+
+---
+id: email_campaigns
+type: model
+base_sql_table: email_esp.stg_campaigns_report
+name: Email campaigns
+description: Mailchimp campaign performance. Uses the populated stg table.
+visibility: internal
+dimensions:
+  - id: campaign
+    type: string
+    expr_sql: campaign_title
+    name: Campaign
+    visibility: public
+  - id: sent_at
+    type: date
+    expr_sql: send_time
+    name: Sent
+    visibility: public
+measures:
+  - id: emails_sent
+    func: sum
+    of: emails_sent
+    type: number
+    name: Emails sent
+    visibility: public
+  - id: avg_open_rate
+    func: avg
+    of: opens_open_rate
+    type: number
+    name: Avg open rate
+    visibility: public
+  - id: avg_click_rate
+    func: avg
+    of: clicks_click_rate
+    type: number
+    name: Avg click rate
+    visibility: public
+
+---
+id: social_facebook
+type: model
+base_sql_table: meta_organic.stg_fb_page_daily
+name: Facebook (organic)
+description: Facebook page daily metrics. Uses the populated stg table.
+visibility: internal
+dimensions:
+  - id: fb_date
+    type: date
+    expr_sql: report__date
+    name: Date
+    visibility: public
+measures:
+  - id: followers
+    func: max
+    of: engagement__lifetime_followers
+    type: number
+    name: Followers (total)
+    description: Lifetime follower count (point-in-time max).
+    visibility: public
+  - id: content_views
+    func: sum
+    of: performance__content_views___total
+    type: number
+    name: Content views
+    visibility: public
