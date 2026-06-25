@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from svix.webhooks import WebhookVerificationError
 
@@ -44,6 +45,22 @@ log = logging.getLogger("rm-data-loader")
 ALLOWED_INBOX = "triton-ingest@agentmail.to"
 
 app = FastAPI(title="rm-data-loader", version="0.1.0")
+
+# The RM Executive Dashboard web app (separate origin) reads /api/dashboard.
+# Read-only aggregate data, GET only.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/api/dashboard")
+def api_dashboard() -> dict:
+    """All data the RM Executive Dashboard app needs, as one JSON payload."""
+    from . import dashboard_api
+    return dashboard_api.dashboard_data()
 
 
 @app.get("/health")

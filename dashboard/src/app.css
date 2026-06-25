@@ -1,0 +1,60 @@
+/* RM Executive Dashboard — layout on top of theme.css tokens */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--rm-cream); color: var(--rm-charcoal); }
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ---------- Header (charcoal hero) ---------- */
+.hero { background: var(--rm-charcoal); color: var(--rm-cream); padding: var(--sp-6) var(--sp-8) var(--sp-5); }
+.hero-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+.hero .logo { height: 36px; }
+.live-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--status-live); color: #fff;
+  font: 700 11px var(--ff-sans); letter-spacing: var(--ls-wider); text-transform: uppercase; padding: 5px 11px; border-radius: var(--r-pill); }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+.hero h1 { font-family: var(--ff-display); text-transform: uppercase; color: var(--rm-cream);
+  font-size: clamp(28px, 4vw, 46px); margin: var(--sp-5) 0 2px; letter-spacing: var(--ls-display); line-height: .95; }
+.hero .sub { color: var(--rm-cream); opacity: .75; font-size: var(--fs-body-sm); }
+
+.kpi-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--sp-3); margin-top: var(--sp-5); }
+.hkpi { background: rgba(247,241,219,.06); border: 1px solid var(--border-inverse); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
+.hkpi .label { font: 700 10px var(--ff-sans); letter-spacing: var(--ls-wider); text-transform: uppercase; color: var(--rm-cream); opacity: .65; }
+.hkpi .value { font: 800 22px var(--ff-sans); color: var(--rm-cream); margin-top: 3px; }
+.hkpi .note { font-size: 11px; color: var(--rm-orange); margin-top: 2px; }
+
+/* ---------- Tabs ---------- */
+.tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); background: var(--rm-black); padding: 0 var(--sp-8);
+  position: sticky; top: 0; z-index: 10; }
+.tab { background: none; border: 0; color: var(--rm-cream); opacity: .65; font: 700 13px var(--ff-sans);
+  text-transform: uppercase; letter-spacing: var(--ls-wide); padding: var(--sp-4); cursor: pointer; border-bottom: 3px solid transparent; }
+.tab:hover { opacity: 1; }
+.tab.active { color: var(--rm-orange); opacity: 1; border-bottom-color: var(--rm-orange); }
+
+/* ---------- Content ---------- */
+main { flex: 1; padding: var(--sp-8); max-width: var(--container-wide); margin: 0 auto; width: 100%; }
+.section-title { font-family: var(--ff-display); text-transform: uppercase; font-size: var(--fs-h3);
+  letter-spacing: var(--ls-display); margin: var(--sp-8) 0 var(--sp-4); }
+.section-title:first-child { margin-top: 0; }
+.grid { display: grid; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+.cols-5 { grid-template-columns: repeat(5, 1fr); }
+.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.cols-2 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 980px) { .cols-5,.cols-4 { grid-template-columns: repeat(2,1fr);} .cols-2{grid-template-columns:1fr;} .kpi-strip{grid-template-columns:repeat(3,1fr);} }
+
+/* ---------- Cards ---------- */
+.card { background: var(--rm-white); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-6); }
+.card.poster { box-shadow: var(--shadow-crisp); }
+.kpi .label { font: 700 11px var(--ff-sans); letter-spacing: var(--ls-wider); text-transform: uppercase; color: var(--fg-muted); }
+.kpi .value { font: 800 var(--fs-h1) var(--ff-sans); line-height: 1; margin-top: var(--sp-3); }
+.kpi .value.accent { color: var(--rm-orange); }
+.kpi .note { font-size: var(--fs-body-sm); color: var(--fg-subtle); margin-top: var(--sp-2); }
+.chart-card h3 { font: 700 13px var(--ff-sans); text-transform: uppercase; letter-spacing: var(--ls-wide); color: var(--fg-muted); margin: 0 0 var(--sp-4); }
+
+table.rm { width: 100%; border-collapse: collapse; font-size: var(--fs-body-sm); }
+table.rm th { text-align: left; font: 700 11px var(--ff-sans); text-transform: uppercase; letter-spacing: var(--ls-wide);
+  color: var(--fg-muted); border-bottom: 2px solid var(--border-strong); padding: var(--sp-2); }
+table.rm td { padding: var(--sp-2); border-bottom: 1px solid var(--border); }
+table.rm td.num, table.rm th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; padding: var(--sp-5) var(--sp-8);
+  font-size: var(--fs-caption); text-align: center; }
+.loading { padding: var(--sp-16); text-align: center; color: var(--fg-muted); font-size: var(--fs-body-lg); }
+.note-flag { font-size: var(--fs-caption); color: var(--fg-subtle); margin-top: var(--sp-2); font-style: italic; }

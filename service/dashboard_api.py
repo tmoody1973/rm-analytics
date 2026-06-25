@@ -1,0 +1,138 @@
+"""
+Read-only dashboard data API. One GET returns all data the RM Executive Dashboard
+web app needs, as JSON. Aggregate, non-PII data. SQL mirrors the validated Hex
+dashboard cells; GA/Meta/Email read the populated stg_ tables (clean fact_ are empty).
+"""
+from __future__ import annotations
+
+import os
+import sys
+from datetime import date, datetime
+from decimal import Decimal
+
+import psycopg
+from psycopg.rows import dict_row
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "loaders"))
+from _common import get_db_connection  # noqa: E402
+
+# name -> SQL. Each returns rows the frontend renders directly.
+QUERIES: dict[str, str] = {
+    "header": """
+        SELECT
+          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Revenue YTD - Cash' ORDER BY month DESC LIMIT 1) AS revenue_ytd,
+          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Cash balance' ORDER BY month DESC LIMIT 1) AS cash_balance,
+          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Total donors YTD' ORDER BY month DESC LIMIT 1) AS total_donors,
+          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Surplus/deficit YTD' ORDER BY month DESC LIMIT 1) AS surplus_ytd,
+          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='% to Revenue Annual Budget' ORDER BY month DESC LIMIT 1) AS pct_to_budget,
+          (SELECT max(engagement__lifetime_followers) FROM meta_organic.stg_fb_page_daily) AS fb_followers,
+          (SELECT coalesce(sum(stats_member_count),0) FROM email_esp.stg_lists) AS email_subscribers
+    """,
+    "exec_kpis": """
+        SELECT
+          (SELECT count(*) FROM funraise.dim_supporters WHERE active_12mo) AS active_donors,
+          (SELECT count(*) FROM funraise.fact_subscriptions WHERE status='Active') AS active_sustainers,
+          (SELECT round(sum(amount)) FROM funraise.fact_subscriptions WHERE status='Active' AND frequency='Monthly') AS sustainer_mrr,
+          (SELECT round(sum(amount)) FROM funraise.fact_transactions WHERE status='Complete' AND transaction_date >= current_date - interval '12 months') AS revenue_12mo
+    """,
+    "revenue_trend": """
+        SELECT date_trunc('month', transaction_date)::date::text AS month, round(sum(amount)) AS revenue
+        FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1 ORDER BY 1
+    """,
+    "revenue_vs_budget": """
+        SELECT month::text AS month,
+               max(value) FILTER (WHERE indicator='Revenue YTD - Cash') AS revenue_ytd,
+               max(value) FILTER (WHERE indicator='Revenue Budget YTD') AS budget_ytd
+        FROM finance.fact_kpi_monthly GROUP BY month ORDER BY month
+    """,
+    "revenue_mix": """
+        SELECT month::text AS month,
+               max(value) FILTER (WHERE indicator='Underwriting Revenue YTD') AS underwriting,
+               max(value) FILTER (WHERE indicator='Individual Revenue YTD') AS individual,
+               max(value) FILTER (WHERE indicator='Foundation Revenue YTD') AS foundation
+        FROM finance.fact_kpi_monthly GROUP BY month ORDER BY month
+    """,
+    "sustainer_tracker": """
+        SELECT round(sum(amount)) AS mrr, count(*) AS active_plans, 50000 AS target
+        FROM funraise.fact_subscriptions WHERE status='Active' AND frequency='Monthly'
+    """,
+    "donor_retention": """
+        WITH d AS (SELECT supporter_id, max(transaction_date) AS last_gift, min(transaction_date) AS first_gift
+                   FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1)
+        SELECT round(100.0 * count(*) FILTER (WHERE last_gift >= current_date - interval '12 months' AND first_gift < current_date - interval '12 months')
+                     / nullif(count(*) FILTER (WHERE first_gift < current_date - interval '12 months'),0),1) AS retention_pct FROM d
+    """,
+    "nielsen_share": """
+        SELECT station_code, value_numeric AS aqh_share, rank
+        FROM nielsen.fact_vital_signs
+        WHERE section='Estimates' AND metric='AQH Share'
+          AND period_date=(SELECT max(period_date) FROM nielsen.fact_vital_signs WHERE metric='AQH Share')
+        ORDER BY aqh_share DESC
+    """,
+    "nielsen_aqh_trend": """
+        SELECT station_code, period_label, period_date::text AS period_date, value_numeric AS aqh_persons
+        FROM nielsen.fact_vital_signs
+        WHERE section='Estimates' AND metric='AQH Persons' AND period_date IS NOT NULL
+        ORDER BY period_date, station_code
+    """,
+    "tlh_by_station": """
+        SELECT station_code, month_start::text AS month, round(tlh) AS tlh, round(aas,1) AS aas
+        FROM wms.fact_monthly_cume ORDER BY month_start, station_code
+    """,
+    "platform_breakdown": """
+        SELECT device_family, round(sum(tlh)) AS tlh
+        FROM wms.fact_monthly_device
+        WHERE month_start=(SELECT max(month_start) FROM wms.fact_monthly_device)
+        GROUP BY device_family ORDER BY tlh DESC
+    """,
+    "station_comparison": """
+        SELECT station_code, round(tlh) AS tlh, round(aas,1) AS aas, cume
+        FROM wms.fact_monthly_cume
+        WHERE month_start=(SELECT max(month_start) FROM wms.fact_monthly_cume)
+        ORDER BY tlh DESC
+    """,
+    "web_sessions_weekly": """
+        SELECT account__property_name AS property, date_trunc('week', report__date)::date::text AS week,
+               sum(engagement__sessions) AS sessions
+        FROM ga.stg_sessions_daily WHERE report__date >= current_date - interval '90 days'
+        GROUP BY 1,2 ORDER BY 2,1
+    """,
+    "social_followers": """
+        SELECT report__date::text AS date, 'Facebook' AS platform, max(engagement__lifetime_followers) AS followers
+        FROM meta_organic.stg_fb_page_daily WHERE engagement__lifetime_followers IS NOT NULL
+        GROUP BY report__date ORDER BY report__date
+    """,
+    "email_campaigns": """
+        SELECT campaign_title, send_time::date::text AS sent,
+               round(opens_open_rate::numeric,3) AS open_rate, round(clicks_click_rate::numeric,3) AS click_rate, emails_sent
+        FROM email_esp.stg_campaigns_report ORDER BY send_time DESC LIMIT 12
+    """,
+    "combined_digital_reach": """
+        SELECT
+          (SELECT sum(engagement__sessions) FROM ga.stg_sessions_daily WHERE report__date >= current_date - interval '30 days') AS web_sessions_30d,
+          (SELECT coalesce(sum(performance__content_views___total),0) FROM meta_organic.stg_fb_page_daily WHERE report__date >= current_date - interval '30 days')
+            + (SELECT coalesce(sum(performance__reach),0) FROM meta_organic.stg_ig_profile_monthly WHERE report__end_date >= current_date - interval '40 days') AS social_reach_30d,
+          (SELECT sum(emails_sent) FROM email_esp.stg_campaigns_report WHERE send_time >= current_date - interval '30 days') AS emails_sent_30d
+    """,
+}
+
+
+def _jsonable(v: object):
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    return v
+
+
+def dashboard_data() -> dict:
+    conn = get_db_connection()
+    out: dict[str, list[dict]] = {}
+    try:
+        with conn.cursor(row_factory=dict_row) as cur:
+            for name, sql in QUERIES.items():
+                cur.execute(sql)
+                out[name] = [{k: _jsonable(v) for k, v in row.items()} for row in cur.fetchall()]
+    finally:
+        conn.close()
+    return out

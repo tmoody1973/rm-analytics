@@ -1,0 +1,398 @@
+/* =========================================================================
+   Radio Milwaukee — Colors & Type
+   Source: RadioMilwaukee_ExternalBrandGuidelines_2022.pdf
+   ========================================================================= */
+
+/* ---------- Webfonts -------------------------------------------------------
+   Sidewalk Block = display (ALL CAPS). Aktiv Grotesk = supporting family for
+   body copy and UI. Aktiv Grotesk Condensed/Extended are referenced in the
+   brand guidelines but the full family wasn't shipped — we fall back to the
+   weights we have and note this in the README.
+   ------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "Sidewalk Block";
+  src: url("/fonts/SidewalkBlock.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Hairline.otf") format("opentype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Thin.otf") format("opentype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-LightItalic.otf") format("opentype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Italic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-MediumItalic.otf") format("opentype");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-BoldItalic.otf") format("opentype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-XBold.otf") format("opentype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aktiv Grotesk";
+  src: url("/fonts/AktivGrotesk-Black.otf") format("opentype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =========================================================================
+   TOKENS
+   ========================================================================= */
+
+:root {
+  /* -------- Brand colors (from 2022 guidelines) ------------------------- */
+  --rm-charcoal: #1F2528;   /* PMS 447 CP  — primary grounding color        */
+  --rm-orange:   #F8971D;   /* PMS 144 C   — primary accent / crescendo     */
+  --rm-cream:    #F7F1DB;   /* PMS 9060 C  — lighter base for layering      */
+  --rm-blue:     #32588E;   /* tertiary, calm supportive boost              */
+
+  /* -------- Neutrals (extended from charcoal/cream via tonal mixing) ---- */
+  --rm-black:        #0E1214;
+  --rm-charcoal-90:  #1F2528;
+  --rm-charcoal-70:  #3A4146;
+  --rm-charcoal-50:  #5C6369;
+  --rm-charcoal-30:  #8A9096;
+  --rm-charcoal-15:  #C4C8CC;
+  --rm-cream-90:     #F7F1DB;
+  --rm-cream-60:     #FAF6E6;
+  --rm-cream-30:     #FDFBF3;
+  --rm-white:        #FFFFFF;
+
+  /* -------- Orange tints/shades (used sparingly for hovers, highlights) - */
+  --rm-orange-dark:  #D97A04;   /* press / deep accent                       */
+  --rm-orange-mid:   #F8971D;
+  --rm-orange-soft:  #FBC074;   /* disabled / subtle hover bg                */
+  --rm-orange-tint:  #FDE6C6;   /* very soft tint bg                         */
+
+  /* -------- Blue tints/shades (tertiary) -------------------------------- */
+  --rm-blue-dark:    #253F66;
+  --rm-blue-mid:     #32588E;
+  --rm-blue-soft:    #8FA6C5;
+
+  /* -------- Semantic: foreground / background --------------------------- */
+  --bg:              var(--rm-cream);
+  --bg-elevated:     var(--rm-cream-60);
+  --bg-inverse:      var(--rm-charcoal);
+  --fg:              var(--rm-charcoal);   /* primary text                   */
+  --fg-muted:        var(--rm-charcoal-70);/* secondary text                 */
+  --fg-subtle:       var(--rm-charcoal-50);/* tertiary / meta text           */
+  --fg-disabled:     var(--rm-charcoal-30);
+  --fg-on-dark:      var(--rm-cream);      /* text on charcoal backgrounds   */
+  --fg-on-accent:    var(--rm-charcoal);   /* text on orange                 */
+
+  /* -------- Semantic: accent / interactive ------------------------------ */
+  --accent:          var(--rm-orange);
+  --accent-hover:    var(--rm-orange-dark);
+  --accent-soft:     var(--rm-orange-tint);
+  --link:            var(--rm-charcoal);
+  --link-hover:      var(--rm-orange);
+
+  /* -------- Semantic: borders / dividers -------------------------------- */
+  --border:          rgba(31, 37, 40, 0.12);
+  --border-strong:   rgba(31, 37, 40, 0.28);
+  --border-inverse:  rgba(247, 241, 219, 0.18);
+
+  /* -------- Semantic: status ------------------------------------------- */
+  --status-live:     #E03A2F;  /* red — "ON AIR" style indicator             */
+  --status-success:  #2E7D4F;
+  --status-warning:  var(--rm-orange);
+  --status-info:     var(--rm-blue);
+
+  /* -------- Type families ---------------------------------------------- */
+  --ff-display: "Sidewalk Block", "Aktiv Grotesk", "Inter", system-ui, sans-serif;
+  --ff-sans:    "Aktiv Grotesk", "Inter", system-ui, -apple-system, Segoe UI, sans-serif;
+  --ff-mono:    ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* -------- Type scale (fluid-ish modular, 1.25 on display / 1.2 on text) */
+  --fs-display-xl: clamp(64px, 8vw, 128px);
+  --fs-display-lg: clamp(48px, 6vw, 88px);
+  --fs-display-md: clamp(36px, 4.5vw, 64px);
+  --fs-display-sm: clamp(28px, 3vw, 40px);
+
+  --fs-h1: 40px;
+  --fs-h2: 32px;
+  --fs-h3: 24px;
+  --fs-h4: 20px;
+  --fs-h5: 16px;
+  --fs-h6: 14px;
+
+  --fs-body-lg: 18px;
+  --fs-body:    16px;
+  --fs-body-sm: 14px;
+  --fs-caption: 12px;
+  --fs-overline: 11px;
+
+  /* -------- Line heights ----------------------------------------------- */
+  --lh-display: 0.95;     /* Sidewalk Block, set tight                   */
+  --lh-tight:   1.15;
+  --lh-snug:    1.3;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.7;
+
+  /* -------- Letter spacing --------------------------------------------- */
+  --ls-display:  -0.01em;
+  --ls-tight:    -0.02em;
+  --ls-normal:   0;
+  --ls-wide:     0.04em;
+  --ls-wider:    0.08em;   /* small caps / overline                       */
+  --ls-widest:   0.12em;
+
+  /* -------- Font weights ----------------------------------------------- */
+  --fw-hairline: 100;
+  --fw-thin:     200;
+  --fw-light:    300;
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-bold:     700;
+  --fw-xbold:    800;
+  --fw-black:    900;
+
+  /* -------- Spacing scale (4px base) ----------------------------------- */
+  --sp-0: 0;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+  --sp-20: 80px;
+  --sp-24: 96px;
+  --sp-32: 128px;
+
+  /* -------- Radii — brand leans square/geometric ----------------------- */
+  --r-none: 0;
+  --r-sm:   4px;
+  --r-md:   8px;
+  --r-lg:   16px;
+  --r-xl:   24px;
+  --r-pill: 999px;
+
+  /* -------- Shadows — understated; ink-like, never glassy -------------- */
+  --shadow-sm: 0 1px 2px rgba(31, 37, 40, 0.08);
+  --shadow-md: 0 4px 12px rgba(31, 37, 40, 0.10);
+  --shadow-lg: 0 12px 32px rgba(31, 37, 40, 0.14);
+  --shadow-crisp: 4px 4px 0 var(--rm-charcoal); /* hard offset, poster-style */
+
+  /* -------- Motion ----------------------------------------------------- */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast:    120ms;
+  --dur-base:    200ms;
+  --dur-slow:    400ms;
+
+  /* -------- Layout ----------------------------------------------------- */
+  --container-narrow: 720px;
+  --container:        1080px;
+  --container-wide:   1320px;
+  --container-full:   1440px;
+}
+
+/* =========================================================================
+   SEMANTIC ELEMENT STYLES
+   Use these defaults, or reach for the tokens directly.
+   ========================================================================= */
+
+html {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body { margin: 0; }
+
+::selection { background: var(--rm-orange); color: var(--rm-charcoal); }
+
+/* Display headings — ALL CAPS, Sidewalk Block.
+   Sidewalk Block is an all-caps face; the glyphs are the same regardless of
+   case, so we keep `text-transform: uppercase` for predictable fallback. */
+h1, .h1 {
+  font-family: var(--ff-display);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-display);
+  letter-spacing: var(--ls-display);
+  font-weight: var(--fw-regular);
+  text-transform: uppercase;
+  margin: 0 0 var(--sp-4);
+  color: var(--fg);
+}
+h2, .h2 {
+  font-family: var(--ff-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-display);
+  letter-spacing: var(--ls-display);
+  font-weight: var(--fw-regular);
+  text-transform: uppercase;
+  margin: 0 0 var(--sp-3);
+  color: var(--fg);
+}
+h3, .h3 {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-h3);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  font-weight: var(--fw-bold);
+  margin: 0 0 var(--sp-3);
+}
+h4, .h4 {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-h4);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-bold);
+  margin: 0 0 var(--sp-2);
+}
+h5, .h5 {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-h5);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-bold);
+  margin: 0 0 var(--sp-2);
+}
+h6, .h6 {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-h6);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-wider);
+  margin: 0 0 var(--sp-2);
+}
+
+/* Display scale — use on hero units and editorial splashes */
+.display-xl, .display-lg, .display-md, .display-sm {
+  font-family: var(--ff-display);
+  font-weight: var(--fw-regular);
+  text-transform: uppercase;
+  line-height: var(--lh-display);
+  letter-spacing: var(--ls-display);
+  color: var(--fg);
+  text-wrap: balance;
+}
+.display-xl { font-size: var(--fs-display-xl); }
+.display-lg { font-size: var(--fs-display-lg); }
+.display-md { font-size: var(--fs-display-md); }
+.display-sm { font-size: var(--fs-display-sm); }
+
+p {
+  margin: 0 0 var(--sp-4);
+  line-height: var(--lh-normal);
+  text-wrap: pretty;
+}
+.lead { font-size: var(--fs-body-lg); line-height: var(--lh-snug); }
+small, .small, .caption { font-size: var(--fs-caption); color: var(--fg-muted); }
+
+/* Overline / eyebrow — small, spaced, uppercase */
+.overline, .eyebrow {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-overline);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-widest);
+  color: var(--fg-muted);
+}
+
+a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+a:hover { color: var(--link-hover); }
+
+code, kbd, pre {
+  font-family: var(--ff-mono);
+  font-size: 0.92em;
+}
+code {
+  background: rgba(31, 37, 40, 0.06);
+  padding: 0.12em 0.4em;
+  border-radius: var(--r-sm);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: var(--sp-8) 0;
+}
+
+/* Utility — brand containers */
+.rm-container       { max-width: var(--container);       margin: 0 auto; padding: 0 var(--sp-6); }
+.rm-container-narrow{ max-width: var(--container-narrow);margin: 0 auto; padding: 0 var(--sp-6); }
+.rm-container-wide  { max-width: var(--container-wide);  margin: 0 auto; padding: 0 var(--sp-6); }
