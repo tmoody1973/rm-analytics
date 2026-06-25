@@ -23,12 +23,17 @@ def test_period_cutoff_30d():
     assert period_cutoff("30d", today=date(2026, 6, 25)) == date(2026, 5, 26)
 
 
+def test_period_cutoff_90d():
+    assert period_cutoff("90d", today=date(2026, 6, 25)) == date(2026, 3, 27)
+
+
 def test_period_cutoff_ytd():
     assert period_cutoff("ytd", today=date(2026, 6, 25)) == date(2026, 1, 1)
 
 
 def test_period_cutoff_all_is_none():
     assert period_cutoff("all", today=date(2026, 6, 25)) is None
+    assert period_cutoff(None, today=date(2026, 6, 25)) is None
 
 
 def test_period_cutoff_unknown_raises():

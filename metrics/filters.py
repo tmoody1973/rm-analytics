@@ -17,6 +17,9 @@ BRAND_STATIONS: dict[str, list[str]] = {
     "GWML": ["GWML"],
 }
 
+# 12m is a 365-day approximation — deliberately matches the front-end `12m`
+# preset (dashboard/src/brands.js) so the tabs, filters, and metric service
+# share one period vocabulary. Do not "fix" it to a calendar month.
 PERIOD_DAYS: dict[str, int] = {"30d": 30, "90d": 90, "12m": 365}
 
 
