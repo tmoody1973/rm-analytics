@@ -1,18 +1,23 @@
 import React, { useEffect, useState } from 'react'
 import { fetchDashboard } from './api.js'
 import { HeaderKpi, money, num } from './components.jsx'
+import { FilterBar } from './filters.jsx'
+import { ALL, DEFAULT_RANGE } from './brands.js'
 import { TABS } from './tabs.jsx'
 
 export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [tab, setTab] = useState('Overview')
+  const [brand, setBrand] = useState(ALL)
+  const [range, setRange] = useState(DEFAULT_RANGE)
 
   useEffect(() => {
     fetchDashboard().then(setData).catch((e) => setErr(e.message))
   }, [])
 
   const h = (data && data.header && data.header[0]) || {}
+  const filters = { brand, range }
 
   return (
     <div className="app">
@@ -39,10 +44,14 @@ export default function App() {
         ))}
       </nav>
 
+      {tab !== 'Overview' && (
+        <FilterBar brand={brand} range={range} onBrand={setBrand} onRange={setRange} />
+      )}
+
       <main>
         {err ? <div className="loading">Couldn't load data: {err}</div>
           : !data ? <div className="loading">Loading the warehouse…</div>
-          : TABS[tab](data)}
+          : TABS[tab](data, filters)}
       </main>
 
       <footer>Radio Milwaukee · Executive Dashboard · Live from the analytics warehouse · Board of Directors</footer>

@@ -67,3 +67,11 @@ export function pivot(rows, keyField, seriesField, valueField) {
 export function distinct(rows, field) {
   return [...new Set(rows.map((r) => r[field]))]
 }
+
+// Collapse rows to one per `key`, summing `val`. Used to re-aggregate after a brand
+// filter narrows multi-station rows (e.g. device split, follower totals per date).
+export function sumBy(rows, key, val) {
+  const m = {}
+  for (const r of rows) m[r[key]] = (m[r[key]] || 0) + Number(r[val] || 0)
+  return Object.entries(m).map(([k, v]) => ({ [key]: k, [val]: v })).sort((a, b) => b[val] - a[val])
+}

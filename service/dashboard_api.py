@@ -80,10 +80,10 @@ QUERIES: dict[str, str] = {
         FROM wms.fact_monthly_cume ORDER BY month_start, station_code
     """,
     "platform_breakdown": """
-        SELECT device_family, round(sum(tlh)) AS tlh
+        SELECT station_code, device_family, round(sum(tlh)) AS tlh
         FROM wms.fact_monthly_device
         WHERE month_start=(SELECT max(month_start) FROM wms.fact_monthly_device)
-        GROUP BY device_family ORDER BY tlh DESC
+        GROUP BY station_code, device_family ORDER BY tlh DESC
     """,
     "station_comparison": """
         SELECT station_code, round(tlh) AS tlh, round(aas,1) AS aas, cume
@@ -94,18 +94,30 @@ QUERIES: dict[str, str] = {
     "web_sessions_weekly": """
         SELECT account__property_name AS property, date_trunc('week', report__date)::date::text AS week,
                sum(engagement__sessions) AS sessions
-        FROM ga.stg_sessions_daily WHERE report__date >= current_date - interval '90 days'
+        FROM ga.stg_sessions_daily WHERE report__date >= current_date - interval '365 days'
         GROUP BY 1,2 ORDER BY 2,1
     """,
+    "email_lists": """
+        SELECT name AS list_name, stats_member_count AS members
+        FROM email_esp.stg_lists WHERE name <> 'Funraise' ORDER BY members DESC
+    """,
     "social_followers": """
-        SELECT report__date::text AS date, 'Facebook' AS platform, max(engagement__lifetime_followers) AS followers
+        SELECT report__date::text AS date, account__account_name AS account,
+               max(engagement__lifetime_followers) AS followers
         FROM meta_organic.stg_fb_page_daily WHERE engagement__lifetime_followers IS NOT NULL
-        GROUP BY report__date ORDER BY report__date
+        GROUP BY report__date, account__account_name ORDER BY report__date
+    """,
+    "social_ig_monthly": """
+        SELECT account__account_name AS account, report__end_date::text AS month,
+               performance__reach AS reach, performance__engagements AS engagements,
+               engagement__accounts_engaged AS accounts_engaged
+        FROM meta_organic.stg_ig_profile_monthly
+        ORDER BY report__end_date, account__account_name
     """,
     "email_campaigns": """
-        SELECT campaign_title, send_time::date::text AS sent,
+        SELECT campaign_title, list_name, send_time::date::text AS sent,
                round(opens_open_rate::numeric,3) AS open_rate, round(clicks_click_rate::numeric,3) AS click_rate, emails_sent
-        FROM email_esp.stg_campaigns_report ORDER BY send_time DESC LIMIT 12
+        FROM email_esp.stg_campaigns_report ORDER BY send_time DESC LIMIT 40
     """,
     "combined_digital_reach": """
         SELECT

@@ -28,6 +28,28 @@ body { margin: 0; background: var(--rm-cream); color: var(--rm-charcoal); }
 .tab:hover { opacity: 1; }
 .tab.active { color: var(--rm-orange); opacity: 1; border-bottom-color: var(--rm-orange); }
 
+/* ---------- Filter bar ---------- */
+.filterbar { display: flex; gap: var(--sp-6); align-items: center; background: var(--rm-cream);
+  border-bottom: 1px solid var(--border); padding: var(--sp-3) var(--sp-8); position: sticky; top: 44px; z-index: 9; }
+.filter { display: flex; align-items: center; gap: var(--sp-2); }
+.filter label { font: 700 10px var(--ff-sans); letter-spacing: var(--ls-wider); text-transform: uppercase; color: var(--fg-muted); }
+.filter select { font: 700 13px var(--ff-sans); color: var(--rm-charcoal); background: var(--rm-white);
+  border: 1px solid var(--border-strong); border-radius: var(--r-pill); padding: 6px 30px 6px 12px; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%231F2528' stroke-width='1.6' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; }
+.filter select:focus { outline: 2px solid var(--rm-orange); outline-offset: 1px; }
+
+/* ---------- Badges + empty state ---------- */
+.badge { display: inline-block; font: 700 10px var(--ff-sans); letter-spacing: var(--ls-wide); text-transform: uppercase;
+  padding: 3px 8px; border-radius: var(--r-pill); margin-left: var(--sp-2); vertical-align: middle; }
+.badge.org-wide { background: rgba(31,37,40,.08); color: var(--fg-muted); }
+.badge.brand { background: var(--rm-orange); color: #fff; }
+.no-brand-data { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  min-height: 220px; color: var(--fg-subtle); border: 1px dashed var(--border-strong); border-radius: var(--r-md); padding: var(--sp-6); }
+.nbd-title { font: 700 14px var(--ff-sans); color: var(--fg-muted); }
+.nbd-sub { font-size: var(--fs-body-sm); margin-top: var(--sp-2); max-width: 320px; }
+
 /* ---------- Content ---------- */
 main { flex: 1; padding: var(--sp-8); max-width: var(--container-wide); margin: 0 auto; width: 100%; }
 .section-title { font-family: var(--ff-display); text-transform: uppercase; font-size: var(--fs-h3);
