@@ -51,13 +51,18 @@ _DAYPART_RE = re.compile(r"\d{1,2}[apm]")             # time token inside a dayp
 
 
 def _period_date(label: str):
-    mon = MONTHS.get(label[:3])
-    if not mon:                       # e.g. HOL (holiday survey) — no clean month
-        return None
+    """Map a Nielsen survey label to a sortable date. Regular months -> 1st of month.
+    HOL (the Holiday book — a distinct survey between the Dec and Jan books) -> Dec 15
+    of its year, so it charts chronologically between DEC and JAN. The period_label
+    ('HOL25') still distinguishes it from the regular December book."""
     try:
-        return date(2000 + int(label[3:5]), mon, 1)
+        yy = int(label[3:5])
     except ValueError:
         return None
+    if label[:3] == "HOL":
+        return date(2000 + yy, 12, 15)
+    mon = MONTHS.get(label[:3])
+    return date(2000 + yy, mon, 1) if mon else None
 
 
 def _station_code(rows: list[list[str]], override: str | None) -> str:
@@ -140,8 +145,11 @@ def load(file_path: str, station_override: str | None = None) -> dict:
     daypart = daypart or "Unknown"
 
     # Locate the period header row (>=3 cells matching the period pattern).
-    header_idx = next(i for i, r in enumerate(rows)
-                      if sum(bool(_PERIOD_RE.match(c.strip())) for c in r) >= 3)
+    header_idx = next((i for i, r in enumerate(rows)
+                       if sum(bool(_PERIOD_RE.match(c.strip())) for c in r) >= 3), None)
+    if header_idx is None:
+        raise ValueError("not a Vital Signs export: no period header row "
+                         "(e.g. MAY25, JUN25, ...) found")
     periods = [(j, c.strip()) for j, c in enumerate(rows[header_idx])
                if _PERIOD_RE.match(c.strip())]   # excludes "14-Month Average" + blanks
 
