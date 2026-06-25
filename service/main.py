@@ -20,16 +20,13 @@ import importlib
 import io
 import json
 import logging
-import os
-import secrets
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from svix.webhooks import WebhookVerificationError
 
 from . import email, slack
@@ -47,25 +44,6 @@ log = logging.getLogger("rm-data-loader")
 ALLOWED_INBOX = "triton-ingest@agentmail.to"
 
 app = FastAPI(title="rm-data-loader", version="0.1.0")
-
-
-security = HTTPBasic()
-
-
-def _require_upload_auth(creds: HTTPBasicCredentials = Depends(security)) -> None:
-    """HTTP Basic auth for the browser upload page. Credentials come from Fly
-    secrets UPLOAD_USER (default 'rm') + UPLOAD_PASSWORD. If no password is set the
-    page is disabled (503) so it can never be left open by accident. Nielsen data
-    is licensed/confidential, so this gate is required."""
-    user = os.environ.get("UPLOAD_USER", "rm")
-    pw = os.environ.get("UPLOAD_PASSWORD")
-    if not pw:
-        raise HTTPException(status_code=503, detail="upload disabled (UPLOAD_PASSWORD unset)")
-    ok = (secrets.compare_digest(creds.username, user)
-          and secrets.compare_digest(creds.password, pw))
-    if not ok:
-        raise HTTPException(status_code=401, detail="unauthorized",
-                            headers={"WWW-Authenticate": "Basic"})
 
 
 @app.get("/health")
@@ -250,13 +228,12 @@ def _nielsen_page(result_html: str = "") -> str:
 
 
 @app.get("/upload/nielsen", response_class=HTMLResponse)
-def nielsen_form(_: None = Depends(_require_upload_auth)) -> str:
+def nielsen_form() -> str:
     return _nielsen_page()
 
 
 @app.post("/upload/nielsen", response_class=HTMLResponse)
-async def nielsen_upload(file: UploadFile = File(...),
-                         _: None = Depends(_require_upload_auth)) -> str:
+async def nielsen_upload(file: UploadFile = File(...)) -> str:
     """Browser upload of a Nielsen Vital Signs CSV -> nielsen.fact_vital_signs."""
     data = await file.read()
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as fh:
