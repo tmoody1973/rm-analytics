@@ -55,6 +55,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from . import metric_api
+
+app.include_router(metric_api.router)
+
 
 @app.get("/api/dashboard")
 def api_dashboard() -> dict:
