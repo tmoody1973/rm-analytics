@@ -49,3 +49,16 @@ def test_revenue_latest_month_matches_legacy_revenue_trend():
     )
     out = run_metric("revenue", group_by="month")
     assert out["data"][-1]["value"] == legacy
+
+
+def test_active_sustainers_matches_legacy_count():
+    legacy = _scalar("SELECT count(*) FROM funraise.fact_subscriptions WHERE status='Active'")
+    out = run_metric("active_sustainers")
+    assert out["meta"]["unit"] == "count"
+    assert out["data"][0]["value"] == legacy
+
+
+def test_total_donors_at_least_active_donors():
+    total = run_metric("total_donors")["data"][0]["value"]
+    active = run_metric("active_donors")["data"][0]["value"]
+    assert total >= active > 0

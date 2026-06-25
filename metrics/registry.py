@@ -96,6 +96,14 @@ def _revenue(brand, period, group_by):
     return sql, params
 
 
+def _active_sustainers(brand, period, group_by):
+    return "SELECT count(*) AS value FROM funraise.fact_subscriptions WHERE status='Active'", []
+
+
+def _total_donors(brand, period, group_by):
+    return "SELECT count(*) AS value FROM funraise.dim_supporters", []
+
+
 REGISTRY: dict[str, Metric] = {
     "sustainer_mrr": Metric(
         "sustainer_mrr", "Sustainer MRR",
@@ -116,6 +124,16 @@ REGISTRY: dict[str, Metric] = {
         "revenue", "Revenue (completed gifts)",
         "Total dollars from completed Funraise gifts (excludes failed/refunded). Period-aware; group by month.",
         "usd", "funraise.fact_transactions", _revenue,
+    ),
+    "active_sustainers": Metric(
+        "active_sustainers", "Active sustainers",
+        "Count of active recurring giving plans (any frequency).",
+        "count", "funraise.fact_subscriptions", _active_sustainers,
+    ),
+    "total_donors": Metric(
+        "total_donors", "Total donors (all time)",
+        "Count of all supporters on record.",
+        "count", "funraise.dim_supporters", _total_donors,
     ),
 }
 
