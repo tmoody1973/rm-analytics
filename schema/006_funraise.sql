@@ -12,11 +12,16 @@
 CREATE SCHEMA IF NOT EXISTS funraise;
 
 -- Donors. supporter_id is the Funraise PK.
+-- PRIVACY / DATA MINIMIZATION (decided 2026-06-25): we intentionally do NOT store
+-- names, raw email, or phone. supporter_id is an opaque Funraise key (not PII) and
+-- is enough for per-donor analytics. email_sha256 is a one-way hash (lowercased +
+-- trimmed email -> SHA-256 hex) so donors can be matched to the email/ESP list
+-- (hash both sides identically) without ever storing a readable address. The loader
+-- discards the raw email at ingest — only the hash is persisted.
+-- See loaders/_common.py:hash_email for the canonical normalization.
 CREATE TABLE IF NOT EXISTS funraise.dim_supporters (
     supporter_id      TEXT PRIMARY KEY,
-    first_name        TEXT,
-    last_name         TEXT,
-    email             TEXT,
+    email_sha256      TEXT,        -- one-way hash, NOT a readable address (see hash_email)
     city              TEXT,
     state             TEXT,
     postal_code       TEXT,
@@ -25,6 +30,9 @@ CREATE TABLE IF NOT EXISTS funraise.dim_supporters (
     lifetime_total    NUMERIC(12, 2),
     loaded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Hash index supports the donor <-> ESP-subscriber join in the marts layer.
+CREATE INDEX IF NOT EXISTS ix_funraise_supporter_email_hash ON funraise.dim_supporters (email_sha256);
 
 -- Funraise campaign metadata.
 CREATE TABLE IF NOT EXISTS funraise.dim_campaigns (
@@ -39,23 +47,41 @@ CREATE TABLE IF NOT EXISTS funraise.dim_campaigns (
 -- Every donation (one-time + recurring). transaction_id is the Funraise PK.
 -- The transaction webhook fires on create OR edit -> ON CONFLICT DO UPDATE.
 CREATE TABLE IF NOT EXISTS funraise.fact_transactions (
-    transaction_id   TEXT PRIMARY KEY,
-    supporter_id     TEXT,
-    campaign_id      TEXT,
-    transaction_date DATE,
-    amount           NUMERIC(12, 2),
-    fee              NUMERIC(12, 2),
-    net              NUMERIC(12, 2),
-    currency         TEXT,
-    payment_method   TEXT,
-    recurring        BOOLEAN,
-    status           TEXT,
-    utm_source       TEXT,
-    utm_medium       TEXT,
-    utm_campaign     TEXT,
-    loaded_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    transaction_id     TEXT PRIMARY KEY,
+    supporter_id       TEXT,
+    campaign_id        TEXT,
+    -- transaction_at is the exact gift moment (for correlating to on-air pledge
+    -- breaks); transaction_date is the day, kept for fast daily rollups.
+    transaction_at     TIMESTAMPTZ,
+    transaction_date   DATE,
+    amount             NUMERIC(12, 2),
+    fee                NUMERIC(12, 2),
+    net                NUMERIC(12, 2),
+    currency           TEXT,
+    payment_method     TEXT,
+    recurring          BOOLEAN,
+    status             TEXT,
+    utm_source         TEXT,
+    utm_medium         TEXT,
+    utm_campaign       TEXT,
+    -- Designation / fund: which program the gift supports + restricted flag.
+    -- Feeds finance restricted-vs-unrestricted split and grant narratives.
+    designation        TEXT,
+    restricted         BOOLEAN,
+    -- Donor-covered processing fee, for true-net revenue analysis.
+    fee_covered        BOOLEAN,
+    fee_covered_amount NUMERIC(12, 2),
+    -- Refund tracking, so reversed gifts don't overstate revenue.
+    refunded           BOOLEAN,
+    refunded_amount    NUMERIC(12, 2),
+    refunded_at        DATE,
+    -- Gift channel (web, event, text-to-give) + link to the recurring plan.
+    channel            TEXT,
+    recurring_plan_id  TEXT,
+    loaded_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS ix_funraise_txn_at        ON funraise.fact_transactions (transaction_at);
 CREATE INDEX IF NOT EXISTS ix_funraise_txn_date      ON funraise.fact_transactions (transaction_date);
 CREATE INDEX IF NOT EXISTS ix_funraise_txn_supporter ON funraise.fact_transactions (supporter_id);
 CREATE INDEX IF NOT EXISTS ix_funraise_txn_campaign  ON funraise.fact_transactions (campaign_id);

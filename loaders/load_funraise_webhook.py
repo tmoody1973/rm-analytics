@@ -22,6 +22,7 @@ COLUMNS = [
     "transaction_id",
     "supporter_id",
     "campaign_id",
+    "transaction_at",
     "transaction_date",
     "amount",
     "fee",
@@ -33,6 +34,15 @@ COLUMNS = [
     "utm_source",
     "utm_medium",
     "utm_campaign",
+    "designation",
+    "restricted",
+    "fee_covered",
+    "fee_covered_amount",
+    "refunded",
+    "refunded_amount",
+    "refunded_at",
+    "channel",
+    "recurring_plan_id",
 ]
 CONFLICT_COLUMNS = ["transaction_id"]
 UPDATE_COLUMNS = [c for c in COLUMNS if c not in CONFLICT_COLUMNS]
@@ -40,6 +50,26 @@ UPDATE_COLUMNS = [c for c in COLUMNS if c not in CONFLICT_COLUMNS]
 
 def _maybe_str(value: object) -> str | None:
     return None if value is None else str(value)
+
+
+def _opt_bool(value: object) -> bool | None:
+    """Optional bool: missing key -> None (unknown), not False. Accepts JSON
+    bools or string flags ('true'/'1'/'yes')."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes", "y", "t"}
+    return bool(value)
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    """Best-effort ISO datetime -> aware datetime. TODO: confirm Funraise's format."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _parse_date(value: object) -> date | None:
@@ -59,21 +89,39 @@ def _parse_date(value: object) -> date | None:
 def _extract(txn: dict) -> tuple:
     """Map one Funraise transaction object to a fact_transactions row tuple."""
     utm = txn.get("utm") or {}
+    status = txn.get("status")
+    when = txn.get("date") or txn.get("createdAt")
     return (
         str(txn.get("id")),
         _maybe_str(txn.get("supporterId") or txn.get("supporter_id")),
         _maybe_str(txn.get("campaignId") or txn.get("campaign_id")),
-        _parse_date(txn.get("date") or txn.get("createdAt")),
+        _parse_datetime(when),
+        _parse_date(when),
         txn.get("amount"),
         txn.get("fee"),
         txn.get("net"),
         txn.get("currency"),
         txn.get("paymentMethod") or txn.get("payment_method"),
         bool(txn.get("recurring")),
-        txn.get("status"),
+        status,
         utm.get("source"),
         utm.get("medium"),
         utm.get("campaign"),
+        # --- extras (best-guess field names; confirm against a real payload) ---
+        txn.get("designation") or txn.get("fund") or txn.get("fundName"),
+        _opt_bool(txn.get("restricted")),
+        _opt_bool(txn.get("feeCovered") or txn.get("fee_covered") or txn.get("coveredFee")),
+        txn.get("feeCoveredAmount") or txn.get("coveredFeeAmount"),
+        _opt_bool(txn.get("refunded")) if txn.get("refunded") is not None
+        else (str(status).lower() == "refunded" if status else None),
+        txn.get("refundedAmount") or txn.get("refundAmount"),
+        _parse_date(txn.get("refundedAt") or txn.get("refunded_at")),
+        txn.get("channel") or txn.get("giftChannel") or txn.get("source"),
+        _maybe_str(
+            txn.get("recurringPlanId")
+            or txn.get("subscriptionId")
+            or txn.get("recurring_plan_id")
+        ),
     )
 
 

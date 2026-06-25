@@ -20,8 +20,42 @@ import time
 
 import requests
 
+from _common import hash_email
+
 API_BASE = os.environ.get("FUNRAISE_API_BASE", "https://api.funraise.io")  # TODO confirm
 _TIMEOUT_SEC = 30
+
+# PRIVACY (see schema/006_funraise.sql): donor rows store NO names, raw email, or
+# phone — only an opaque supporter_id, a one-way email hash, and coarse geo.
+SUPPORTER_COLUMNS = [
+    "supporter_id",
+    "email_sha256",
+    "city",
+    "state",
+    "postal_code",
+    "country",
+    "first_donation_at",
+    "lifetime_total",
+]
+
+
+def _extract_supporter(rec: dict) -> tuple:
+    """Map one Funraise supporter record to a privacy-minimized dim_supporters row.
+
+    The raw email is hashed and discarded here; names/phone are never read, so
+    PII cannot leak into the warehouse even if the API returns it.
+    TODO: confirm Funraise field names against a real API response.
+    """
+    return (
+        str(rec.get("id")),
+        hash_email(rec.get("email")),
+        rec.get("city"),
+        rec.get("state"),
+        rec.get("postalCode") or rec.get("postal_code") or rec.get("zip"),
+        rec.get("country"),
+        rec.get("firstDonationAt") or rec.get("first_donation_at"),
+        rec.get("lifetimeTotal") or rec.get("lifetime_total"),
+    )
 
 
 def _api_key() -> str:

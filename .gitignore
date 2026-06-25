@@ -1,5 +1,5 @@
-exports/*.xlsx
-exports/*.csv
+# Source data exports (incl. raw donor PII in subfolders) — NEVER commit.
+exports/
 .env
 .venv/
 __pycache__/

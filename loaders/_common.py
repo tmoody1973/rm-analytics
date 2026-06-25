@@ -8,6 +8,7 @@ psycopg3 (the `psycopg` package). Import is `import psycopg`, NOT psycopg2.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -80,6 +81,25 @@ def coerce_str(value: object) -> str:
     if _is_blank(value):
         return ""
     return str(value).strip()
+
+
+# ---------------------------------------------------------------------------
+# PII minimization. We never store raw emails for donors (see schema/006_funraise.sql).
+# hash_email is the ONE canonical normalization, used on BOTH sides of any future
+# donor <-> ESP-subscriber match so identical addresses hash identically.
+# Normalize = strip + lowercase, then SHA-256 hex. Blank -> None.
+# ---------------------------------------------------------------------------
+def hash_email(value: object) -> str | None:
+    """Lowercased+trimmed email -> SHA-256 hex digest. Blank/None -> None.
+
+    This is a one-way hash: it cannot be reversed to a readable address, but the
+    same address always produces the same digest, which is what lets us join
+    donors to email subscribers without storing PII.
+    """
+    if _is_blank(value):
+        return None
+    normalized = str(value).strip().lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def read_export(file_path: str) -> "pd.DataFrame":

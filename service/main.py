@@ -44,6 +44,20 @@ ALLOWED_INBOX = "triton-ingest@agentmail.to"
 app = FastAPI(title="rm-data-loader", version="0.1.0")
 
 
+def _payload_skeleton(obj: Any) -> Any:
+    """Return the key/type structure of a payload WITHOUT any values.
+
+    Temporary diagnostic for mapping Funraise's real field names: it reveals the
+    shape (keys + types, recursing one list element deep) but logs no PII —
+    names/emails/amounts never reach the logs, only their field names and types.
+    """
+    if isinstance(obj, dict):
+        return {k: _payload_skeleton(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_payload_skeleton(obj[0])] if obj else []
+    return type(obj).__name__
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "routes": known_tags()}
@@ -182,6 +196,10 @@ async def webhook_funraise(request: Request) -> Any:
         payload = json.loads(body or b"{}")
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="invalid json") from exc
+
+    # TEMP diagnostic (PII-safe): log the payload shape so we can map Funraise's
+    # real field names. Remove once load_funraise_webhook._extract is finalized.
+    log.info("funraise payload skeleton: %s", json.dumps(_payload_skeleton(payload)))
 
     loader = importlib.import_module("load_funraise_webhook")
     try:

@@ -109,11 +109,16 @@ underwriting questions are inherently monthly.
 
 ### `funraise`
 Mirrors Funraise's API shape:
-- `funraise.fact_transactions` — every donation (one-time + recurring),
-  amount, fee, net, supporter_id, campaign_id, date, payment method,
-  UTM source/medium/campaign
-- `funraise.dim_supporters` — donors (name, email, first donation, lifetime
-  total, supporter_id is PK)
+- `funraise.fact_transactions` — every donation (one-time + recurring; the
+  `recurring` bool flags which), amount, fee, net, supporter_id, campaign_id,
+  date, payment method, UTM source/medium/campaign, plus **designation/fund +
+  restricted flag, donor-covered fee (+amount), refund status (+amount/date),
+  gift channel, and recurring_plan_id** linking back to a subscription
+- `funraise.dim_supporters` — donors. **PII-MINIMIZED (decided 2026-06-25):
+  NO names, NO raw email, NO phone.** Stores `supporter_id` (PK, opaque Funraise
+  key), `email_sha256` (one-way hash — `loaders/_common.py:hash_email`, lets us
+  match donors to the ESP list without storing a readable address),
+  city/state/postal_code/country, first_donation_at, lifetime_total
 - `funraise.fact_subscriptions` — recurring giving plans (active, churned,
   amount, frequency)
 - `funraise.dim_campaigns` — Funraise campaign metadata
