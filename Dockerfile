@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY service/ service/
 COPY loaders/ loaders/
+COPY jobs/ jobs/
 
 EXPOSE 8080
 
