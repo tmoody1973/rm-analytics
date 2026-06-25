@@ -79,6 +79,23 @@ def _streaming_tlh(brand, period, group_by):
     return sql, params
 
 
+def _revenue(brand, period, group_by):
+    where = ["status='Complete'"]
+    params: list = []
+    cutoff = period_cutoff(period)
+    if cutoff:
+        where.append("transaction_date >= %s")
+        params.append(cutoff)
+    clause = " WHERE " + " AND ".join(where)
+    if group_by == "month":
+        sql = (f"SELECT date_trunc('month', transaction_date)::date::text AS bucket, "
+               f"round(sum(amount)) AS value FROM funraise.fact_transactions{clause} "
+               f"GROUP BY 1 ORDER BY 1")
+    else:
+        sql = f"SELECT round(sum(amount)) AS value FROM funraise.fact_transactions{clause}"
+    return sql, params
+
+
 REGISTRY: dict[str, Metric] = {
     "sustainer_mrr": Metric(
         "sustainer_mrr", "Sustainer MRR",
@@ -94,6 +111,11 @@ REGISTRY: dict[str, Metric] = {
         "streaming_tlh", "Streaming total listening hours",
         "Triton streaming hours, summed. Brand- and period-aware; group by month or station.",
         "hours", "wms.fact_monthly_cume", _streaming_tlh,
+    ),
+    "revenue": Metric(
+        "revenue", "Revenue (completed gifts)",
+        "Total dollars from completed Funraise gifts (excludes failed/refunded). Period-aware; group by month.",
+        "usd", "funraise.fact_transactions", _revenue,
     ),
 }
 
