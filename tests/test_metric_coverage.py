@@ -62,3 +62,28 @@ def test_total_donors_at_least_active_donors():
     total = run_metric("total_donors")["data"][0]["value"]
     active = run_metric("active_donors")["data"][0]["value"]
     assert total >= active > 0
+
+
+def test_avg_active_sessions_total_positive():
+    out = run_metric("avg_active_sessions")
+    assert out["meta"]["unit"] == "count"
+    assert out["meta"]["source"] == "wms.fact_monthly_cume"
+    assert out["data"][0]["value"] > 0
+
+
+def test_avg_active_sessions_group_by_station_returns_buckets():
+    out = run_metric("avg_active_sessions", group_by="station")
+    assert {"bucket", "value"} <= set(out["data"][0].keys())
+    assert len(out["data"]) >= 2
+
+
+def test_avg_active_sessions_brand_filter_changes_value():
+    all_aas = run_metric("avg_active_sessions")["data"][0]["value"]
+    hyfin = run_metric("avg_active_sessions", brand="HYFIN")["data"][0]["value"]
+    assert hyfin > 0
+    assert hyfin != all_aas
+
+
+def test_avg_active_sessions_bad_group_by_raises():
+    with pytest.raises(ValueError):
+        run_metric("avg_active_sessions", group_by="weekday")

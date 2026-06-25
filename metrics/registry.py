@@ -104,6 +104,29 @@ def _total_donors(brand, period, group_by):
     return "SELECT count(*) AS value FROM funraise.dim_supporters", []
 
 
+def _avg_active_sessions(brand, period, group_by):
+    where: list[str] = []
+    params: list = []
+    codes = station_codes_for(brand)
+    if codes:
+        where.append("station_code = ANY(%s)")
+        params.append(codes)
+    cutoff = period_cutoff(period)
+    if cutoff:
+        where.append("month_start >= %s")
+        params.append(cutoff)
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    if group_by == "station":
+        sql = (f"SELECT station_code AS bucket, round(avg(aas),1) AS value "
+               f"FROM wms.fact_monthly_cume{clause} GROUP BY 1 ORDER BY 2 DESC")
+    elif group_by == "month":
+        sql = (f"SELECT month_start::text AS bucket, round(avg(aas),1) AS value "
+               f"FROM wms.fact_monthly_cume{clause} GROUP BY 1 ORDER BY 1")
+    else:
+        sql = f"SELECT round(avg(aas),1) AS value FROM wms.fact_monthly_cume{clause}"
+    return sql, params
+
+
 REGISTRY: dict[str, Metric] = {
     "sustainer_mrr": Metric(
         "sustainer_mrr", "Sustainer MRR",
@@ -134,6 +157,11 @@ REGISTRY: dict[str, Metric] = {
         "total_donors", "Total donors (all time)",
         "Count of all supporters on record.",
         "count", "funraise.dim_supporters", _total_donors,
+    ),
+    "avg_active_sessions": Metric(
+        "avg_active_sessions", "Avg active sessions (AAS)",
+        "Average concurrent Triton streams. Brand- and period-aware; group by month or station.",
+        "count", "wms.fact_monthly_cume", _avg_active_sessions,
     ),
 }
 
