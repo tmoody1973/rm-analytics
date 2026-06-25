@@ -32,10 +32,14 @@ def _post(text: str) -> None:
 
 
 def post_success(tag: str, stats: dict[str, Any]) -> None:
+    # Tolerant of any loader's stats shape — not every loader emits every key.
+    upserted = stats.get("rows_upserted", "?")
+    table = stats.get("table", "?")
+    read = stats.get("rows_read", stats.get("periods", "?"))
+    elapsed = stats.get("elapsed_sec", "?")
     text = (
         f":white_check_mark: *{tag}* upserted "
-        f"{stats['rows_upserted']} rows into `{stats['table']}` "
-        f"({stats['rows_read']} read, {stats['elapsed_sec']}s)"
+        f"{upserted} rows into `{table}` ({read} read, {elapsed}s)"
     )
     _post(text)
 

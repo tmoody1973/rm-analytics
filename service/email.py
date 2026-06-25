@@ -70,17 +70,20 @@ def _send(subject: str, text: str) -> None:
 
 def post_success(tag: str, stats: dict[str, Any]) -> None:
     short = _strip_brackets(tag)
-    subject = (
-        f"OK {short}: {stats['rows_upserted']} rows -> {stats['table']}"
-    )
+    # Tolerant of any loader's stats shape — not every loader emits every key.
+    upserted = stats.get("rows_upserted", "?")
+    table = stats.get("table", "?")
+    read = stats.get("rows_read", stats.get("periods", "?"))
+    elapsed = stats.get("elapsed_sec", "?")
+    subject = f"OK {short}: {upserted} rows -> {table}"
     text = (
-        "Triton report processed into Neon.\n\n"
+        "Report processed into Neon.\n\n"
         f"Tag:           {short}\n"
         f"Query:         {stats.get('query', '?')}\n"
-        f"Target table:  {stats['table']}\n"
-        f"Rows read:     {stats['rows_read']}\n"
-        f"Rows upserted: {stats['rows_upserted']}\n"
-        f"Elapsed:       {stats['elapsed_sec']}s\n"
+        f"Target table:  {table}\n"
+        f"Rows read:     {read}\n"
+        f"Rows upserted: {upserted}\n"
+        f"Elapsed:       {elapsed}s\n"
     )
     _send(subject, text)
 

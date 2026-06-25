@@ -181,6 +181,7 @@ def load(file_path: str, station_override: str | None = None) -> dict:
 
     return {
         "file": file_path.split("/")[-1],
+        "table": TABLE,
         "station": station, "demo": demo, "daypart": daypart, "market": market,
         "periods": len(periods), "rows_upserted": n,
         "elapsed_sec": round(time.time() - start, 1),
