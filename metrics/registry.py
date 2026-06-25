@@ -56,6 +56,29 @@ def _active_donors(brand, period, group_by):
     )
 
 
+def _streaming_tlh(brand, period, group_by):
+    where: list[str] = []
+    params: list = []
+    codes = station_codes_for(brand)
+    if codes:
+        where.append("station_code = ANY(%s)")
+        params.append(codes)
+    cutoff = period_cutoff(period)
+    if cutoff:
+        where.append("month_start >= %s")
+        params.append(cutoff)
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    if group_by == "month":
+        sql = (f"SELECT month_start::text AS bucket, round(sum(tlh)) AS value "
+               f"FROM wms.fact_monthly_cume{clause} GROUP BY 1 ORDER BY 1")
+    elif group_by == "station":
+        sql = (f"SELECT station_code AS bucket, round(sum(tlh)) AS value "
+               f"FROM wms.fact_monthly_cume{clause} GROUP BY 1 ORDER BY 2 DESC")
+    else:
+        sql = f"SELECT round(sum(tlh)) AS value FROM wms.fact_monthly_cume{clause}"
+    return sql, params
+
+
 REGISTRY: dict[str, Metric] = {
     "sustainer_mrr": Metric(
         "sustainer_mrr", "Sustainer MRR",
@@ -66,6 +89,11 @@ REGISTRY: dict[str, Metric] = {
         "active_donors", "Active donors",
         "Distinct donors with a completed gift in the last 12 months.",
         "count", "funraise.dim_supporters", _active_donors,
+    ),
+    "streaming_tlh": Metric(
+        "streaming_tlh", "Streaming total listening hours",
+        "Triton streaming hours, summed. Brand- and period-aware; group by month or station.",
+        "hours", "wms.fact_monthly_cume", _streaming_tlh,
     ),
 }
 
