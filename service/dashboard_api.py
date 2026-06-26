@@ -216,16 +216,52 @@ QUERIES: dict[str, str] = {
         GROUP BY tier ORDER BY min(lifetime_total)
     """,
     "payment_method_mix": """
-        SELECT coalesce(nullif(payment_method,''),'Unknown') AS method,
-               count(*) AS gifts, round(sum(amount)) AS total
+        SELECT
+            CASE lower(replace(coalesce(nullif(payment_method,''),'other'),'_',' '))
+                WHEN 'credit card' THEN 'Credit Card'
+                WHEN 'ach'         THEN 'ACH'
+                WHEN 'physical check' THEN 'Physical Check'
+                WHEN 'personal check' THEN 'Physical Check'
+                WHEN 'check'       THEN 'Physical Check'
+                WHEN 'apple pay'   THEN 'Apple Pay'
+                WHEN 'paypal'      THEN 'PayPal'
+                WHEN 'cash'        THEN 'Cash'
+                WHEN 'stock'       THEN 'Stock'
+                WHEN 'donor advised fund' THEN 'Donor Advised Fund'
+                WHEN 'external capture' THEN 'Other'
+                WHEN 'other'       THEN 'Other'
+                ELSE 'Other'
+            END AS method,
+            count(*) AS gifts,
+            round(sum(amount)) AS total
         FROM funraise.fact_transactions
         WHERE status='Complete' AND coalesce(refunded,false)=false
         GROUP BY method ORDER BY total DESC
     """,
     "donor_geo_state": """
-        SELECT coalesce(nullif(state,''),'Unknown') AS state,
-               count(*) AS donors, round(sum(lifetime_total)) AS lifetime
-        FROM funraise.dim_supporters WHERE lifetime_total>0
+        SELECT state, count(*) AS donors, round(sum(lifetime)) AS lifetime
+        FROM (
+            SELECT
+                CASE upper(trim(coalesce(nullif(state,''),'Unknown')))
+                    WHEN 'WISCONSIN'     THEN 'WI'
+                    WHEN 'ILLINOIS'      THEN 'IL'
+                    WHEN 'CALIFORNIA'    THEN 'CA'
+                    WHEN 'MINNESOTA'     THEN 'MN'
+                    WHEN 'COLORADO'      THEN 'CO'
+                    WHEN 'NEW YORK'      THEN 'NY'
+                    WHEN 'FLORIDA'       THEN 'FL'
+                    WHEN 'VIRGINIA'      THEN 'VA'
+                    WHEN 'MICHIGAN'      THEN 'MI'
+                    WHEN 'WASHINGTON'    THEN 'WA'
+                    WHEN 'OREGON'        THEN 'OR'
+                    WHEN 'PENNSYLVANIA'  THEN 'PA'
+                    WHEN 'ARIZONA'       THEN 'AZ'
+                    WHEN 'NEW JERSEY'    THEN 'NJ'
+                    ELSE upper(trim(coalesce(nullif(state,''),'Unknown')))
+                END AS state,
+                lifetime_total AS lifetime
+            FROM funraise.dim_supporters WHERE lifetime_total>0
+        ) sub
         GROUP BY state ORDER BY donors DESC LIMIT 15
     """,
     "donor_geo_zip": """
