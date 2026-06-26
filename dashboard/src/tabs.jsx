@@ -181,7 +181,7 @@ function Social(d, f) {
   const hasEmail = brandHasChannel(f.brand, 'email')
 
   // Email (Mailchimp) data
-  const campsAll = filterByDate(filterByBrand(d.email_campaigns, f.brand, 'list_name', fromEmailList), 'sent', f.range)
+  const campsAll = filterByDate(filterByBrand(d.email_campaigns || [], f.brand, 'list_name', fromEmailList), 'sent', f.range)
   const camps = campsAll.slice(0, 12)
   const lists = filterByBrand(d.email_lists || [], f.brand, 'list_name', fromEmailList)
   const members = lists.reduce((a, r) => a + Number(r.members || 0), 0)
@@ -248,9 +248,9 @@ function Social(d, f) {
       <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected.</div>
 
       {/* Email — Mailchimp widgets folded into the Social tab */}
-      <SectionTitle>Email Marketing — Mailchimp <BrandBadge brand={f.brand} /></SectionTitle>
-      {!hasEmail ? <NoBrandData brand={f.brand} channel="email" /> : (
+      {hasEmail && (
         <>
+          <SectionTitle>Email Marketing — Mailchimp <BrandBadge brand={f.brand} /></SectionTitle>
           <div className="grid cols-4">
             <Kpi label="List Members" value={num(members)} accent note="Current subscribers" />
             <Kpi label={`Emails Sent · ${rangeLabel(f.range)}`} value={num(emailsSent)} note="Across campaigns" />
