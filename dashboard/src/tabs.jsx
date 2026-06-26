@@ -38,52 +38,261 @@ function Lines({ rows, xKey, seriesKey, valKey, x, nameFmt = (s) => s }) {
   )
 }
 
-// ---------- OVERVIEW (org-wide snapshot — no brand/date filter) ----------
-function Overview(d) {
-  const k = d.exec_kpis[0]
-  const reach = d.combined_digital_reach[0]
+// ---------- OVERVIEW — Board/Executive scorecard ----------
+
+// Direction-arrow helper: compare latest trend point to same period prior year
+// (fallback: prior available point). Returns {delta, dir: 'up'|'down'} or null.
+function trendDirection(rows, dateKey, valKey) {
+  if (!rows || rows.length < 2) return null
+  const sorted = [...rows].sort((a, b) => String(a[dateKey]).localeCompare(String(b[dateKey])))
+  const latest = sorted[sorted.length - 1]
+  const latestVal = Number(latest[valKey])
+  if (isNaN(latestVal)) return null
+  // Try to find a row from ~12 months earlier (within ±2 months)
+  const latestDate = new Date(latest[dateKey])
+  const targetMs = latestDate.getTime() - 365 * 24 * 60 * 60 * 1000
+  let priorRow = null
+  let bestDiff = Infinity
+  for (const r of sorted.slice(0, -1)) {
+    const t = new Date(r[dateKey]).getTime()
+    const diff = Math.abs(t - targetMs)
+    if (diff < bestDiff && diff < 70 * 24 * 60 * 60 * 1000) { // within 70 days of target
+      bestDiff = diff
+      priorRow = r
+    }
+  }
+  // Fallback: use the prior available point
+  if (!priorRow) priorRow = sorted[sorted.length - 2]
+  if (!priorRow) return null
+  const priorVal = Number(priorRow[valKey])
+  if (isNaN(priorVal) || priorVal === 0) return null
+  const delta = latestVal - priorVal
+  return { delta, dir: delta >= 0 ? 'up' : 'down' }
+}
+
+// Render direction badge inline: ▲ +123 or ▼ −456. Returns null when dir is null.
+function Delta({ dir }) {
+  if (!dir) return null
+  const up = dir.dir === 'up'
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 600, marginLeft: 6,
+      color: up ? '#2a7a3a' : '#c0392b',
+    }}>
+      {up ? '▲' : '▼'} {num(Math.abs(dir.delta))}
+    </span>
+  )
+}
+
+function Overview(d, f) {
+  const k = d.exec_kpis[0] || {}
+  const dk = d.dev_kpis || {}
+  const reach = d.combined_digital_reach[0] || {}
+  const st = d.sustainer_tracker[0] || {}
+  const hdr = d.header[0] || {}
+
+  // ── GROUP 1: Reach ──────────────────────────────────────────────
+  // Broadcast: latest cume per station from nielsen_cume, direction from nielsen_cume_trend
+  const bcRows = filterByBrand(d.nielsen_cume || [], f.brand, 'station_code', fromStation)
+  const bcTrend = filterByBrand(d.nielsen_cume_trend || [], f.brand, 'station_code', fromStation)
+  const hasBroadcast = brandHasChannel(f.brand, 'nielsen') && bcRows.length > 0
+  // Build a per-station trend array for direction (group by station, sort by period_date)
+  const bcTrendByStation = {}
+  for (const r of bcTrend) {
+    if (!bcTrendByStation[r.station_code]) bcTrendByStation[r.station_code] = []
+    bcTrendByStation[r.station_code].push(r)
+  }
+
+  // Streaming cume: latest from station_comparison (brand-filtered), direction from tlh_by_station
+  const streamRows = filterByBrand(d.station_comparison || [], f.brand, 'station_code', fromStation)
+  const tlhHistory = filterByBrand(d.tlh_by_station || [], f.brand, 'station_code', fromStation)
+  const totalStreamCume = streamRows.reduce((a, r) => a + Number(r.cume || 0), 0)
+  const streamCumeDir = trendDirection(tlhHistory, 'month', 'cume')
+
+  // Social followers: latest row per account, sum for the brand
+  const socialFollowersAll = filterByBrand(d.social_followers || [], f.brand, 'account', fromFbAccount)
+  // Get latest per account
+  const latestFollowersByAccount = {}
+  for (const r of socialFollowersAll) {
+    if (!latestFollowersByAccount[r.account] || r.date > latestFollowersByAccount[r.account].date) {
+      latestFollowersByAccount[r.account] = r
+    }
+  }
+  const totalFollowers = Object.values(latestFollowersByAccount).reduce((a, r) => a + Number(r.followers || 0), 0)
+
+  // Web sessions: latest week total
+  const webWeeklyAll = filterByBrand(d.web_sessions_weekly || [], f.brand, 'property', fromGaProperty)
+  const latestWebWeek = webWeeklyAll.reduce((m, r) => (r.week > m ? r.week : m), '')
+  const latestWebSessions = webWeeklyAll.filter((r) => r.week === latestWebWeek).reduce((a, r) => a + Number(r.sessions || 0), 0)
+  const hasWeb = brandHasChannel(f.brand, 'web')
+
+  // ── GROUP 2: Revenue ──────────────────────────────────────────────
+  const latestRvb = (d.revenue_vs_budget || []).at(-1) || {}
+  const revYtd = latestRvb.revenue_ytd || hdr.revenue_ytd
+  const budgetYtd = latestRvb.budget_ytd
+  const pctToBudget = hdr.pct_to_budget
+  const latestMix = (d.revenue_mix || []).at(-1) || {}
+  const revMixData = [
+    { name: 'Foundation', value: latestMix.foundation },
+    { name: 'Individual', value: latestMix.individual },
+    { name: 'Underwriting', value: latestMix.underwriting },
+  ].filter((x) => x.value)
+
+  // ── GROUP 3: Donor health ─────────────────────────────────────────
+  const mrrTarget = st.target || 50000
+  const mrrVal = k.sustainer_mrr || st.mrr
+
+  // ── GROUP 4: Market position ──────────────────────────────────────
+  const nielsenShareRows = filterByBrand(d.nielsen_share || [], f.brand, 'station_code', fromStation)
+  const aqhTrend = filterByBrand(d.nielsen_aqh_trend || [], f.brand, 'station_code', fromStation)
+  const hasNielsen = brandHasChannel(f.brand, 'nielsen') && nielsenShareRows.length > 0
+
   return (
     <>
-      <SectionTitle>At a glance</SectionTitle>
-      <div className="grid cols-4">
-        <Kpi label="Active Donors" value={num(k.active_donors)} note="Gave in last 12 months" />
-        <Kpi label="Active Sustainers" value={num(k.active_sustainers)} note="Recurring plans" />
-        <Kpi label="Sustainer MRR" value={money(k.sustainer_mrr)} accent note="Target $50K / mo" />
-        <Kpi label="Revenue · 12 mo" value={money(k.revenue_12mo)} note="Completed gifts" />
-      </div>
-      <div className="grid cols-2">
-        <ChartCard title="Revenue Trend (completed gifts)">
-          <ResponsiveContainer width="100%" height={H}>
-            <LineChart data={d.revenue_trend} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-              <CartesianGrid {...GRID} vertical={false} />
-              <XAxis dataKey="month" {...AXIS} tickFormatter={(m) => m?.slice(0, 7)} />
-              <YAxis {...AXIS} tickFormatter={moneyK} />
-              <Tooltip {...TOOLTIP} formatter={(v) => money(v)} />
-              <Line type="monotone" dataKey="revenue" stroke={RM.charcoal} strokeWidth={2.4}
-                dot={{ r: 2, fill: RM.orange }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-        <ChartCard title="Nielsen AQH Share — latest">
-          <ResponsiveContainer width="100%" height={H}>
-            <BarChart layout="vertical" data={d.nielsen_share} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
-              <CartesianGrid {...GRID} horizontal={false} />
-              <XAxis type="number" {...AXIS} />
-              <YAxis type="category" dataKey="station_code" {...AXIS} width={120} tickFormatter={stationLabel} />
-              <Tooltip {...TOOLTIP} />
-              <Bar dataKey="aqh_share" radius={[0, 4, 4, 0]}>
-                {d.nielsen_share.map((r) => <Cell key={r.station_code} fill={stationColor(r.station_code)} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-      <div className="grid cols-4">
-        <Kpi label="Web Sessions · 30d" value={num(reach.web_sessions_30d)} />
-        <Kpi label="Social Reach · 30d" value={num(reach.social_reach_30d)} />
-        <Kpi label="Emails Sent · 30d" value={num(reach.emails_sent_30d)} />
-        <Kpi label="Donor Retention" value={pct(d.donor_retention[0].retention_pct)} accent note="Target 45–50%" />
-      </div>
+      {/* ── Intro ── */}
+      <SectionTitle>{SECTION_INTRO.board} <OrgWideBadge /></SectionTitle>
+
+      {/* ══════════════════════════════════════════════════════════
+          GROUP 1 — REACH
+      ════════════════════════════════════════════════════════════ */}
+      <ChartCard title="Reach" deck={DECK.board_reach}>
+        <div className="grid cols-4">
+          {/* Broadcast weekly cume — only if brand has nielsen */}
+          {hasBroadcast ? bcRows.map((r) => {
+            const stDir = trendDirection(bcTrendByStation[r.station_code] || [], 'period_date', 'cume')
+            return (
+              <Kpi key={r.station_code}
+                label={`${stationLabel(r.station_code)} Broadcast Cume`}
+                value={<>{num(r.cume)}<Delta dir={stDir} /></>}
+                info={GLOSSARY.weekly_cume}
+                note="Weekly broadcast reach" />
+            )
+          }) : null}
+
+          {/* Streaming cume */}
+          {brandHasChannel(f.brand, 'streaming') ? (
+            <Kpi label="Streaming Cume"
+              value={<>{num(totalStreamCume || null)}<Delta dir={streamCumeDir} /></>}
+              info={GLOSSARY.cume}
+              note="Latest month · digital streams" />
+          ) : null}
+
+          {/* Social following */}
+          <Kpi label="Social Followers"
+            value={num(totalFollowers || null)}
+            note="Latest · Facebook" />
+
+          {/* Web sessions — latest week */}
+          {hasWeb ? (
+            <Kpi label="Web Sessions"
+              value={num(latestWebSessions || null)}
+              note={latestWebWeek ? `Week of ${latestWebWeek.slice(0, 10)}` : 'Latest week'} />
+          ) : null}
+        </div>
+        <div className="note-flag">
+          Broadcast, streaming, social, and web audiences are counted by source — a person who listens and donates appears in each bucket. We can&apos;t de-duplicate across them.
+        </div>
+      </ChartCard>
+
+      {/* ══════════════════════════════════════════════════════════
+          GROUP 2 — REVENUE VS BUDGET
+      ════════════════════════════════════════════════════════════ */}
+      <ChartCard title="Revenue vs. Budget" deck={DECK.board_revenue}>
+        <OrgWideBadge />
+        <div className="grid cols-4" style={{ marginTop: 12 }}>
+          <Kpi label="Revenue YTD" value={money(revYtd)} accent />
+          <Kpi label="Budget YTD" value={money(budgetYtd)} />
+          <Kpi label="% to Budget" value={pctToBudget != null ? pct(pctToBudget) : '—'}
+            accent={pctToBudget >= 1} info={GLOSSARY.pct_to_budget} note="Over 100% = ahead of plan" />
+          <Kpi label="Surplus YTD" value={money(hdr.surplus_ytd)}
+            note={hdr.cash_balance ? `Cash balance ${money(hdr.cash_balance)}` : undefined} />
+        </div>
+        {revMixData.length > 0 && (
+          <div className="grid cols-2" style={{ marginTop: 16 }}>
+            <ChartCard title="Revenue Breakdown (latest YTD)">
+              <ResponsiveContainer width="100%" height={H}>
+                <PieChart>
+                  <Pie data={revMixData} dataKey="value" nameKey="name" innerRadius={64} outerRadius={104} paddingAngle={2}>
+                    {revMixData.map((_, i) => <Cell key={i} fill={SERIES[i % SERIES.length]} />)}
+                  </Pie>
+                  <Tooltip {...TOOLTIP} formatter={(v) => money(v)} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title="Revenue vs. Budget (YTD trend)" deck={DECK.revenue_vs_budget}>
+              <ResponsiveContainer width="100%" height={H}>
+                <BarChart data={d.revenue_vs_budget || []} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+                  <CartesianGrid {...GRID} vertical={false} />
+                  <XAxis dataKey="month" {...AXIS} tickFormatter={(m) => m?.slice(0, 7)} />
+                  <YAxis {...AXIS} tickFormatter={moneyK} />
+                  <Tooltip {...TOOLTIP} formatter={(v) => money(v)} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="revenue_ytd" name="Revenue" fill={RM.charcoal} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="budget_ytd" name="Budget" fill={RM.blueSoft} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        )}
+      </ChartCard>
+
+      {/* ══════════════════════════════════════════════════════════
+          GROUP 3 — DONOR HEALTH
+      ════════════════════════════════════════════════════════════ */}
+      <ChartCard title="Donor Health" deck={DECK.board_donors}>
+        <OrgWideBadge />
+        <div className="grid cols-4" style={{ marginTop: 12 }}>
+          <Kpi label="Active Donors"
+            value={num(k.active_donors)}
+            note="Gave in last 12 months" />
+          <Kpi label="Active Sustainers"
+            value={num(k.active_sustainers)}
+            note="Recurring plans" />
+          <Kpi label="Sustainer MRR"
+            value={money(mrrVal)}
+            accent={mrrVal >= mrrTarget}
+            info={GLOSSARY.sustainer_mrr}
+            note={mrrTarget ? `Target ${money(mrrTarget)} / mo` : 'Monthly recurring'} />
+          <Kpi label="Donor Retention"
+            value={pct(dk.donor_retention_pct)}
+            info={GLOSSARY.donor_retention}
+            note="Target 45–50% · prior-year donors who gave again" />
+        </div>
+      </ChartCard>
+
+      {/* ══════════════════════════════════════════════════════════
+          GROUP 4 — MARKET POSITION
+      ════════════════════════════════════════════════════════════ */}
+      <ChartCard title="Market Position" deck={DECK.board_market}>
+        {!hasNielsen ? (
+          <div className="note-flag">Nielsen data is available for Radio Milwaukee and HYFIN — select one of those brands, or All Brands, to see market position.</div>
+        ) : (
+          <>
+            {/* AQH share + rank per station, with aqh_vs_cume context */}
+            <div className="grid cols-2">
+              {nielsenShareRows.map((r) => (
+                <Kpi key={r.station_code}
+                  label={`${stationLabel(r.station_code)} AQH Share`}
+                  value={r.aqh_share}
+                  accent={r.station_code === 'RM88'}
+                  info={GLOSSARY.aqh_share}
+                  note={r.rank ? `Market rank #${r.rank} · ${GLOSSARY.market_rank.split('.')[0]}` : undefined} />
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: RM.charcoal70, margin: '8px 0 12px', fontStyle: 'italic' }}>
+              {GLOSSARY.aqh_vs_cume}
+            </div>
+            {/* AQH persons sparkline */}
+            {aqhTrend.length > 0 && (
+              <ChartCard title="AQH Persons — Survey Trend" info={GLOSSARY.aqh_persons}>
+                <Lines rows={aqhTrend} xKey="period_label" seriesKey="station_code"
+                  valKey="aqh_persons" x={(p) => p} nameFmt={stationLabel} />
+              </ChartCard>
+            )}
+          </>
+        )}
+      </ChartCard>
     </>
   )
 }
