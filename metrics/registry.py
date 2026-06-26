@@ -104,6 +104,85 @@ def _total_donors(brand, period, group_by):
     return "SELECT count(*) AS value FROM funraise.dim_supporters", []
 
 
+def _avg_gift(brand, period, group_by):
+    where = ["status='Complete'", "amount > 0", "coalesce(refunded, false) = false"]
+    params: list = []
+    cutoff = period_cutoff(period)
+    if cutoff:
+        where.append("transaction_date >= %s")
+        params.append(cutoff)
+    clause = " WHERE " + " AND ".join(where)
+    sql = (
+        f"SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY amount)::numeric, 2) AS value, "
+        f"round(avg(amount), 2) AS mean "
+        f"FROM funraise.fact_transactions{clause}"
+    )
+    return sql, params
+
+
+def _sustainer_share(brand, period, group_by):
+    sql = (
+        "WITH active AS ("
+        "  SELECT DISTINCT supporter_id FROM funraise.fact_transactions"
+        "  WHERE status='Complete' AND transaction_date >= current_date - interval '365 days'"
+        "), sustainers AS ("
+        "  SELECT DISTINCT supporter_id FROM funraise.fact_transactions"
+        "  WHERE status='Complete' AND recurring"
+        "  AND transaction_date >= current_date - interval '365 days'"
+        ") "
+        "SELECT round("
+        "  100.0 * (SELECT count(*) FROM sustainers) / NULLIF((SELECT count(*) FROM active), 0), 1"
+        ") AS value"
+    )
+    return sql, []
+
+
+def _donor_retention_pct(brand, period, group_by):
+    sql = (
+        "WITH prior AS ("
+        "  SELECT DISTINCT supporter_id FROM funraise.fact_transactions"
+        "  WHERE status='Complete'"
+        "  AND transaction_date >= current_date - interval '730 days'"
+        "  AND transaction_date < current_date - interval '365 days'"
+        "), recent AS ("
+        "  SELECT DISTINCT supporter_id FROM funraise.fact_transactions"
+        "  WHERE status='Complete' AND transaction_date >= current_date - interval '365 days'"
+        ") "
+        "SELECT round("
+        "  100.0 * count(*) FILTER (WHERE supporter_id IN (SELECT supporter_id FROM recent))"
+        "  / NULLIF(count(*), 0), 1"
+        ") AS value FROM prior"
+    )
+    return sql, []
+
+
+def _new_donors(brand, period, group_by):
+    cutoff = period_cutoff(period)
+    if cutoff:
+        since_expr = "%s"
+        params: list = [cutoff]
+    else:
+        since_expr = "current_date - interval '365 days'"
+        params = []
+    sql = (
+        f"SELECT count(*) AS value FROM ("
+        f"  SELECT supporter_id, min(transaction_date) AS fg"
+        f"  FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1"
+        f") s WHERE s.fg >= {since_expr}"
+    )
+    return sql, params
+
+
+def _lapsed_donors(brand, period, group_by):
+    sql = (
+        "SELECT count(*) AS value FROM ("
+        "  SELECT supporter_id, max(transaction_date) AS lg"
+        "  FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1"
+        ") s WHERE s.lg < current_date - interval '365 days'"
+    )
+    return sql, []
+
+
 def _avg_active_sessions(brand, period, group_by):
     where: list[str] = []
     params: list = []
@@ -162,6 +241,31 @@ REGISTRY: dict[str, Metric] = {
         "avg_active_sessions", "Avg active sessions (AAS)",
         "Average concurrent Triton streams. Brand- and period-aware; group by month or station.",
         "count", "wms.fact_monthly_cume", _avg_active_sessions,
+    ),
+    "avg_gift": Metric(
+        "avg_gift", "Avg gift (median)",
+        "Median completed gift amount. Returns median as value and mean as an extra field. Period-aware.",
+        "usd", "funraise.fact_transactions", _avg_gift,
+    ),
+    "sustainer_share": Metric(
+        "sustainer_share", "Sustainer share",
+        "Percentage of active-12-month donors who are recurring sustainers.",
+        "percent", "funraise.fact_transactions", _sustainer_share,
+    ),
+    "donor_retention_pct": Metric(
+        "donor_retention_pct", "Donor retention",
+        "Share of donors active in the prior 12 months who also gave in the most recent 12 months.",
+        "percent", "funraise.fact_transactions", _donor_retention_pct,
+    ),
+    "new_donors": Metric(
+        "new_donors", "New donors",
+        "Donors whose first-ever completed gift falls within the period. Period-aware; defaults to last 365 days.",
+        "count", "funraise.fact_transactions", _new_donors,
+    ),
+    "lapsed_donors": Metric(
+        "lapsed_donors", "Lapsed donors",
+        "Donors who gave at least once but whose last completed gift was more than 12 months ago.",
+        "count", "funraise.fact_transactions", _lapsed_donors,
     ),
 }
 
