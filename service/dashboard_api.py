@@ -126,6 +126,47 @@ QUERIES: dict[str, str] = {
             + (SELECT coalesce(sum(performance__reach),0) FROM meta_organic.stg_ig_profile_monthly WHERE report__end_date >= current_date - interval '40 days') AS social_reach_30d,
           (SELECT sum(emails_sent) FROM email_esp.stg_campaigns_report WHERE send_time >= current_date - interval '30 days') AS emails_sent_30d
     """,
+    "daypart_aas": """
+        SELECT h.station_code,
+               d.daypart_id,
+               d.name AS daypart,
+               round(avg(h.aas), 1) AS aas
+        FROM wms.fact_hourly_listening h
+        JOIN dim.dayparts d ON h.hour >= d.start_hour AND h.hour < d.end_hour
+        WHERE h.date >= (current_date - interval '365 days')
+        GROUP BY h.station_code, d.daypart_id, d.name
+        ORDER BY h.station_code, d.daypart_id
+    """,
+    "hourly_grid": """
+        SELECT station_code,
+               extract(dow from date)::int AS dow,
+               hour,
+               round(avg(aas), 1) AS aas,
+               round(avg(cume))  AS cume
+        FROM wms.fact_hourly_listening
+        WHERE date >= (current_date - interval '365 days')
+        GROUP BY station_code, dow, hour
+        ORDER BY station_code, dow, hour
+    """,
+    "tsl_trend": """
+        SELECT station_code,
+               date_trunc('month', date)::date AS month,
+               round(avg(tsl_minutes), 1) AS tsl_minutes
+        FROM wms.fact_hourly_listening
+        GROUP BY station_code, month
+        ORDER BY station_code, month
+    """,
+    "top_web_content": """
+        SELECT account__property_name AS property,
+               page__page_path AS page_path,
+               sum(engagement__views) AS views,
+               round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s
+        FROM ga.stg_pages_daily
+        WHERE report__date >= (current_date - interval '90 days')
+        GROUP BY property, page_path
+        ORDER BY views DESC
+        LIMIT 50
+    """,
 }
 
 
