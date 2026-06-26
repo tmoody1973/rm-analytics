@@ -81,52 +81,12 @@ def _cap_rows(cleaned: str) -> str:
     """Bound the OUTER result to MAX_ROWS by wrapping the query in a subquery.
 
     Wrapping (vs. editing an inner LIMIT) guarantees the cap holds no matter
-    what LIMIT/FETCH a CTE or subquery contains, and never rewrites the
-    user's own SQL/literals. The read-only role's statement_timeout is the
-    time backstop; this is the row backstop.
-
-    PostgreSQL does not allow a WITH clause inside a subquery's FROM, so for
-    WITH queries the CTE block is promoted to the outer SELECT:
-      WITH <ctes> SELECT * FROM (<select-body>) AS _ask_sql_capped LIMIT n
-    For plain SELECT queries the whole query becomes the subquery.
+    what LIMIT/FETCH a CTE or subquery contains, and never rewrites the user's
+    own SQL or string literals. PostgreSQL permits a WITH clause inside the
+    wrapped subquery, so plain SELECT and WITH queries wrap identically (verified
+    on Neon). The read-only role's statement_timeout is the time backstop; this
+    is the row backstop.
     """
-    first = cleaned.split(None, 1)[0].lower()
-    if first == "with":
-        # Split "WITH <ctes> SELECT ..." into the CTE prefix and the SELECT body.
-        # Find the SELECT that follows the last closing parenthesis of the CTE list.
-        # Strategy: scan for the outermost-level SELECT keyword after all CTE parens.
-        depth = 0
-        i = 0
-        # Skip past "WITH"
-        while i < len(cleaned) and cleaned[i:i+4].lower() != "with":
-            i += 1
-        i += 4  # past WITH
-        # Walk through CTE definitions (balanced parens) to find where SELECT starts
-        in_cte_header = True
-        while i < len(cleaned) and in_cte_header:
-            ch = cleaned[i]
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    # End of a CTE body — check what follows (comma = more CTEs, else SELECT)
-                    j = i + 1
-                    while j < len(cleaned) and cleaned[j].isspace():
-                        j += 1
-                    if j < len(cleaned) and cleaned[j] == ",":
-                        i = j + 1  # skip comma, continue to next CTE
-                        continue
-                    else:
-                        # No more CTEs — everything from j onward is the SELECT body
-                        cte_prefix = cleaned[:i + 1]  # "WITH ... )"
-                        select_body = cleaned[j:].strip()
-                        return (
-                            f"{cte_prefix}\n"
-                            f"SELECT * FROM (\n{select_body}\n) AS _ask_sql_capped LIMIT {MAX_ROWS}"
-                        )
-            i += 1
-    # Plain SELECT (or fallback)
     return f"SELECT * FROM (\n{cleaned}\n) AS _ask_sql_capped LIMIT {MAX_ROWS}"
 
 
