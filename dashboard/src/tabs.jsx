@@ -375,6 +375,38 @@ function Mailchimp(d, f) {
   )
 }
 
+// ---------- SHARED: DaypartAas widget ----------
+// Extracted so both ProgramDirector and UnderwritingTab can reuse it.
+// `rows` is brand-filtered daypart_aas rows (with station_code, daypart_id, daypart, aas).
+// `deck` is the ChartCard deck text passed by the caller.
+function DaypartAas({ rows, deck }) {
+  const daypartSorted = [...rows].sort((a, b) => Number(a.daypart_id) - Number(b.daypart_id))
+  const daypartData = sumBy(daypartSorted.map((r) => ({ daypart: r.daypart, aas: r.aas })), 'daypart', 'aas')
+    .sort((a, b) => {
+      const ia = daypartSorted.findIndex((r) => r.daypart === a.daypart)
+      const ib = daypartSorted.findIndex((r) => r.daypart === b.daypart)
+      return ia - ib
+    })
+  return (
+    <ChartCard title="Daypart — Average Active Sessions" deck={deck}>
+      {daypartData.length === 0 ? (
+        <div className="note-flag">No daypart data for this selection.</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={H}>
+          <BarChart data={daypartData} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+            <CartesianGrid {...GRID} vertical={false} />
+            <XAxis dataKey="daypart" {...AXIS} />
+            <YAxis {...AXIS} />
+            <Tooltip {...TOOLTIP} />
+            <Bar dataKey="aas" name="AAS" fill={RM.blue} radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+      <div className="note-flag">365-day profile — date filter does not apply. Brand filter applies.</div>
+    </ChartCard>
+  )
+}
+
 // ---------- PROGRAM DIRECTOR ----------
 function ProgramDirector(d, f) {
   // Step 1: Gate the entire tab on streaming channel
@@ -404,16 +436,8 @@ function ProgramDirector(d, f) {
     : null
   const fmtTsl = (m) => (m == null ? '—' : `${Math.floor(m)}m ${Math.round((m % 1) * 60)}s`)
 
-  // Step 3: Daypart AAS — period-agnostic (intentionally ignores date filter)
+  // Step 3: Daypart AAS rows (passed to shared DaypartAas component)
   const daypartRows = filterByBrand(d.daypart_aas || [], f.brand, 'station_code', fromStation)
-  const daypartSorted = [...daypartRows].sort((a, b) => Number(a.daypart_id) - Number(b.daypart_id))
-  const daypartData = sumBy(daypartSorted.map((r) => ({ daypart: r.daypart, aas: r.aas })), 'daypart', 'aas')
-    // restore daypart_id order
-    .sort((a, b) => {
-      const ia = daypartSorted.findIndex((r) => r.daypart === a.daypart)
-      const ib = daypartSorted.findIndex((r) => r.daypart === b.daypart)
-      return ia - ib
-    })
 
   // Step 4: Hour grid — period-agnostic
   const hourGridRows = filterByBrand(d.hourly_grid || [], f.brand, 'station_code', fromStation)
@@ -455,23 +479,8 @@ function ProgramDirector(d, f) {
           note={latestTslMonth ? latestTslMonth.slice(0, 7) : 'No data'} />
       </div>
 
-      {/* Step 3: Daypart AAS */}
-      <ChartCard title="Daypart — Average Active Sessions" deck={DECK.daypart_aas}>
-        {daypartData.length === 0 ? (
-          <div className="note-flag">No daypart data for this selection.</div>
-        ) : (
-          <ResponsiveContainer width="100%" height={H}>
-            <BarChart data={daypartData} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-              <CartesianGrid {...GRID} vertical={false} />
-              <XAxis dataKey="daypart" {...AXIS} />
-              <YAxis {...AXIS} />
-              <Tooltip {...TOOLTIP} />
-              <Bar dataKey="aas" name="AAS" fill={RM.blue} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-        <div className="note-flag">365-day profile — date filter does not apply. Brand filter applies.</div>
-      </ChartCard>
+      {/* Step 3: Daypart AAS — shared DaypartAas component */}
+      <DaypartAas rows={daypartRows} deck={DECK.daypart_aas} />
 
       {/* Step 4: Hourly grid */}
       <ChartCard title="Hour × Day Listening Grid" deck={DECK.hourly_grid}>
@@ -583,11 +592,178 @@ function ProgramDirector(d, f) {
   )
 }
 
-// ---------- UNDERWRITING (stub — widgets added in Task 6) ----------
+// ---------- UNDERWRITING ----------
 function UnderwritingTab(d, f) {
+  // Step 1: Gate entire tab on streaming channel
+  if (!brandHasChannel(f.brand, 'streaming')) {
+    return (
+      <>
+        <SectionTitle>{SECTION_INTRO.underwriting} <BrandBadge brand={f.brand} /></SectionTitle>
+        <NoBrandData brand={f.brand} channel="streaming" />
+      </>
+    )
+  }
+
+  // Step 2: Sellable-inventory KPIs — overall AAS + per-daypart top
+  const daypartRows = filterByBrand(d.daypart_aas || [], f.brand, 'station_code', fromStation)
+  // Sum AAS across all dayparts (collapsed to daypart level, then total)
+  const daypartSorted = [...daypartRows].sort((a, b) => Number(a.daypart_id) - Number(b.daypart_id))
+  const daypartAggregated = sumBy(
+    daypartSorted.map((r) => ({ daypart: r.daypart, daypart_id: r.daypart_id, aas: r.aas })),
+    'daypart', 'aas'
+  )
+  // Overall AAS: average across dayparts (each daypart is already an average — don't sum them)
+  const overallAas = daypartAggregated.length
+    ? Math.round(daypartAggregated.reduce((a, r) => a + r.aas, 0) / daypartAggregated.length)
+    : null
+  // Top daypart by AAS
+  const topDaypart = daypartAggregated.length
+    ? daypartAggregated.reduce((best, r) => (r.aas > best.aas ? r : best), daypartAggregated[0])
+    : null
+
+  // Step 4: Device/platform split — brand-filtered via fromStation
+  const deviceRows = filterByBrand(d.platform_breakdown || [], f.brand, 'station_code', fromStation)
+  // platform_breakdown shape: {station_code, device_family, device, player, aas, tlh, cume, ss, tsl_minutes}
+  // Collapse to device_family, summing tlh for the pie
+  const deviceData = sumBy(deviceRows, 'device_family', 'tlh')
+
+  // Step 5: Nielsen for advertisers — only if brand has nielsen
+  const hasNielsen = brandHasChannel(f.brand, 'nielsen')
+  const nielsenShare = filterByBrand(d.nielsen_share || [], f.brand, 'station_code', fromStation)
+  const nielsenTrend = filterByDate(
+    filterByBrand(d.nielsen_aqh_trend || [], f.brand, 'station_code', fromStation),
+    'period_date', f.range
+  )
+
+  // Step 6: Revenue data (org-wide)
+  const rvb = filterByDate(d.revenue_vs_budget || [], 'month', f.range)
+  const latestMix = (d.revenue_mix || [])[d.revenue_mix ? d.revenue_mix.length - 1 : 0] || {}
+  const last = rvb[rvb.length - 1] || {}
+
   return (
     <>
-      <SectionTitle>{SECTION_INTRO.underwriting}</SectionTitle>
+      <SectionTitle>{SECTION_INTRO.underwriting} <BrandBadge brand={f.brand} /></SectionTitle>
+
+      {/* Step 2: Sellable-inventory KPIs */}
+      <div className="grid cols-4">
+        <Kpi label="Overall AAS" value={num(overallAas)} accent info={GLOSSARY.aas}
+          note="Avg across dayparts · 365-day profile" />
+        <Kpi label={`Top Daypart — ${topDaypart ? topDaypart.daypart : '—'}`}
+          value={topDaypart ? num(Math.round(topDaypart.aas)) : '—'} info={GLOSSARY.aas}
+          note="Highest avg concurrent streams" />
+        <Kpi label="Device Segments" value={num(deviceData.length || null)} note="Distinct device families" />
+        <Kpi label="Underwriting Revenue" value={money(latestMix.underwriting)} note="Latest YTD · org-wide" />
+      </div>
+
+      {/* Step 3: Marquee — shared DaypartAas widget */}
+      <DaypartAas rows={daypartRows} deck="The audience we can sell, by time of day." />
+
+      {/* Step 4: Device/platform split */}
+      <ChartCard title="Device / Platform Split (TLH)" deck={DECK.device_split}>
+        {deviceData.length === 0 ? (
+          <div className="note-flag">No device data for this brand.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={H}>
+            <PieChart>
+              <Pie data={deviceData} dataKey="tlh" nameKey="device_family"
+                innerRadius={60} outerRadius={104} paddingAngle={2}>
+                {deviceData.map((_, i) => <Cell key={i} fill={SERIES[i % SERIES.length]} />)}
+              </Pie>
+              <Tooltip {...TOOLTIP} formatter={(v) => num(v)} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
+        <div className="note-flag">Latest month · based on Total Listening Hours by device family.</div>
+      </ChartCard>
+
+      {/* Step 5: Nielsen for advertisers */}
+      {hasNielsen && (
+        <>
+          <div className="grid cols-2">
+            {nielsenShare.map((r) => (
+              <Kpi key={r.station_code} label={`${stationLabel(r.station_code)} AQH Persons`}
+                value={num(r.aqh_persons)} info={GLOSSARY.aqh_persons}
+                accent={r.station_code === 'RM88'} note={`Market rank #${r.rank}`} />
+            ))}
+          </div>
+          <div className="grid cols-2">
+            <ChartCard title="Nielsen AQH Persons — Trend" info={GLOSSARY.aqh_persons}>
+              {nielsenTrend.length === 0 ? (
+                <div className="note-flag">No Nielsen trend data for this period.</div>
+              ) : (
+                <Lines rows={nielsenTrend} xKey="period_label" seriesKey="station_code"
+                  valKey="aqh_persons" x={(p) => p} nameFmt={stationLabel} />
+              )}
+            </ChartCard>
+            <ChartCard title="Nielsen AQH Share — latest">
+              <ResponsiveContainer width="100%" height={H}>
+                <BarChart layout="vertical" data={nielsenShare} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
+                  <CartesianGrid {...GRID} horizontal={false} />
+                  <XAxis type="number" {...AXIS} />
+                  <YAxis type="category" dataKey="station_code" {...AXIS} width={120} tickFormatter={stationLabel} />
+                  <Tooltip {...TOOLTIP} />
+                  <Bar dataKey="aqh_share" radius={[0, 4, 4, 0]}>
+                    {nielsenShare.map((r) => <Cell key={r.station_code} fill={stationColor(r.station_code)} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+          <div className="note-flag">P6+ demo loaded (Radio Milwaukee = 88Nine FM, HYFIN). Additional demos/dayparts accumulate as reports are uploaded.</div>
+        </>
+      )}
+
+      {/* Step 6: Underwriting revenue — org-wide */}
+      <SectionTitle>Underwriting Revenue <OrgWideBadge /></SectionTitle>
+      <div className="grid cols-4">
+        <Kpi label="Revenue YTD" value={money(last.revenue_ytd)} accent />
+        <Kpi label="Budget YTD" value={money(last.budget_ytd)} />
+        <Kpi label="Underwriting (latest YTD)" value={money(latestMix.underwriting)} />
+        <Kpi label="Individual + Underwriting" value={money((latestMix.individual || 0) + (latestMix.underwriting || 0))} />
+      </div>
+      <div className="grid cols-2">
+        <ChartCard title="Revenue vs. Budget (YTD)" deck={DECK.revenue_vs_budget}>
+          {rvb.length === 0 ? (
+            <div className="note-flag">No revenue data loaded yet.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={H}>
+              <BarChart data={rvb} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+                <CartesianGrid {...GRID} vertical={false} />
+                <XAxis dataKey="month" {...AXIS} tickFormatter={(m) => m?.slice(0, 7)} />
+                <YAxis {...AXIS} tickFormatter={moneyK} />
+                <Tooltip {...TOOLTIP} formatter={(v) => money(v)} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="revenue_ytd" name="Revenue" fill={RM.charcoal} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="budget_ytd" name="Budget" fill={RM.blueSoft} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+        <ChartCard title="Revenue Breakdown (latest YTD)">
+          {(() => {
+            const mix = [
+              { name: 'Foundation', value: latestMix.foundation },
+              { name: 'Individual', value: latestMix.individual },
+              { name: 'Underwriting', value: latestMix.underwriting },
+            ].filter((x) => x.value)
+            return mix.length === 0 ? (
+              <div className="note-flag">No revenue mix data loaded yet.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={H}>
+                <PieChart>
+                  <Pie data={mix} dataKey="value" nameKey="name" innerRadius={64} outerRadius={104} paddingAngle={2}>
+                    {mix.map((_, i) => <Cell key={i} fill={SERIES[i % SERIES.length]} />)}
+                  </Pie>
+                  <Tooltip {...TOOLTIP} formatter={(v) => money(v)} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )
+          })()}
+        </ChartCard>
+      </div>
+      <div className="note-flag"><em>Per-sponsor pipeline is coming once underwriting/CRM data is loaded.</em></div>
     </>
   )
 }
