@@ -12,6 +12,7 @@ import {
   fromStation, fromGaProperty, fromFbAccount, fromIgAccount, fromEmailList,
 } from './brands.js'
 import { BrandBadge, OrgWideBadge, NoBrandData } from './filters.jsx'
+import { SECTION_INTRO } from './glossary.js'
 
 const H = 300
 const stationColor = (s) => (s === 'RM88' ? RM.orange : s === 'HYFIN' ? RM.blue : RM.charcoal70)
@@ -374,6 +375,33 @@ function Mailchimp(d, f) {
   )
 }
 
+// ---------- PROGRAM DIRECTOR (stub — widgets added in Task 5) ----------
+function ProgramDirector(d, f) {
+  return (
+    <>
+      <SectionTitle>{SECTION_INTRO.program_director}</SectionTitle>
+    </>
+  )
+}
+
+// ---------- UNDERWRITING (stub — widgets added in Task 6) ----------
+function UnderwritingTab(d, f) {
+  return (
+    <>
+      <SectionTitle>{SECTION_INTRO.underwriting}</SectionTitle>
+    </>
+  )
+}
+
+// NOTE: Nielsen, Triton, and Mailchimp render functions are kept above and
+// will be reused by ProgramDirector / Underwriting / Social in Tasks 5–6.
+// They are intentionally NOT listed as TABS entries.
+
 export const TABS = {
-  Overview, Financial, 'Digital Reach': DigitalReach, Social, Nielsen, 'Triton Streaming': Triton, Mailchimp,
+  Overview,
+  'Program Director': ProgramDirector,
+  Underwriting: UnderwritingTab,
+  Digital: DigitalReach,
+  Social,
+  'Finance / Exec': Financial,
 }
