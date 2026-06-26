@@ -330,7 +330,7 @@ describe("querySqlTool", () => {
     );
 
     // Must resolve — not reject — even on 400
-    const result = await expect(
+    await expect(
       querySqlTool.execute({ sql: "DELETE FROM wms.fact_hourly_listening" })
     ).resolves.toEqual({ error: "only a single SELECT or WITH statement is allowed" });
   });
