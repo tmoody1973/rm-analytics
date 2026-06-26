@@ -87,7 +87,6 @@ function Delta({ dir }) {
 function Overview(d, f) {
   const k = d.exec_kpis[0] || {}
   const dk = d.dev_kpis || {}
-  const reach = d.combined_digital_reach[0] || {}
   const st = d.sustainer_tracker[0] || {}
   const hdr = d.header[0] || {}
 
@@ -203,7 +202,7 @@ function Overview(d, f) {
           <Kpi label="Revenue YTD" value={money(revYtd)} accent />
           <Kpi label="Budget YTD" value={money(budgetYtd)} />
           <Kpi label="% to Budget" value={pctToBudget != null ? pct(pctToBudget) : '—'}
-            accent={pctToBudget >= 1} info={GLOSSARY.pct_to_budget} note="Over 100% = ahead of plan" />
+            accent={pctToBudget >= 100} info={GLOSSARY.pct_to_budget} note="Over 100% = ahead of plan" />
           <Kpi label="Surplus YTD" value={money(hdr.surplus_ytd)}
             note={hdr.cash_balance ? `Cash balance ${money(hdr.cash_balance)}` : undefined} />
         </div>
