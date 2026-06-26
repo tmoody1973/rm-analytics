@@ -829,6 +829,235 @@ function UnderwritingTab(d, f) {
   )
 }
 
+// ---------- DEVELOPMENT (org-wide) ----------
+function Development(d, f) {
+  const k = d.exec_kpis[0]
+  const dk = d.dev_kpis || {}
+
+  // ── Step 3: Retention cohort — drop the latest prior_year (year+1 incomplete) ──
+  const retentionRaw = d.donor_retention_trend || []
+  const maxYear = retentionRaw.reduce((m, r) => Math.max(m, r.prior_year || 0), 0)
+  // Drop rows where prior_year === maxYear (the forward-looking incomplete year)
+  const retentionRows = retentionRaw.filter((r) => r.prior_year !== maxYear)
+  const minYear = retentionRows.reduce((m, r) => Math.min(m, r.prior_year || 9999), 9999)
+
+  // ── Step 4: New vs returning — filter by date (org-wide; no brand filter) ──
+  const statusTrend = filterByDate(d.donor_status_trend || [], 'month', f.range)
+
+  // ── Step 5: Sustainer flow — check if churn is all-zero ──
+  const flowRaw = filterByDate(d.sustainer_flow || [], 'month', f.range)
+  const allChurnZero = flowRaw.every((r) => !r.churned || Number(r.churned) === 0)
+
+  // ── Step 6: LTV tiers — top-tier (last row, already ascending) ──
+  const ltvTiers = d.ltv_tiers || []
+  const topTier = ltvTiers[ltvTiers.length - 1] || {}
+  const totalLtvDonors = ltvTiers.reduce((a, r) => a + Number(r.donors || 0), 0)
+  const topTierPct = totalLtvDonors ? Math.round(100 * (topTier.donors || 0) / totalLtvDonors) : null
+
+  // ── Step 7: Payment mix ──
+  const payMix = d.payment_method_mix || []
+
+  // ── Step 8: Donor geo ──
+  const geoState = d.donor_geo_state || []
+  const geoZip = d.donor_geo_zip || []
+
+  return (
+    <>
+      {/* Step 1: Section intro */}
+      <SectionTitle>{SECTION_INTRO.development} <OrgWideBadge /></SectionTitle>
+
+      {/* Step 2: Headline KPI row */}
+      <div className="grid cols-4">
+        <Kpi label="Active Donors" value={num(k.active_donors)} accent note="Gave in last 12 months" />
+        <Kpi label="Sustainer MRR" value={money(k.sustainer_mrr)} accent note="Target $50K / mo" />
+        <Kpi label="Sustainer Share" value={pct(dk.sustainer_share)} info={GLOSSARY.sustainer_share}
+          note="Of active donors, give monthly" />
+        <Kpi label="Donor Retention" value={pct(dk.donor_retention_pct)} info={GLOSSARY.donor_retention}
+          note="Prior-year donors who gave again" />
+      </div>
+      <div className="grid cols-4">
+        <Kpi label="Median Gift" value={money(dk.avg_gift)} info={GLOSSARY.avg_gift}
+          note={dk.avg_gift_mean != null ? `Mean ${money(dk.avg_gift_mean)}` : undefined} />
+        <Kpi label="Revenue · 12 mo" value={money(k.revenue_12mo)} note="Completed gifts" />
+        <Kpi label="Active Sustainers" value={num(k.active_sustainers)} note="Recurring plans" />
+        <Kpi label="New Donors" value={num(dk.new_donors)} info={GLOSSARY.new_donor} note="First gift · last 12 mo" />
+      </div>
+      <div className="grid cols-4">
+        <Kpi label="Lapsed Donors" value={num(dk.lapsed_donors)} info={GLOSSARY.lapsed_donor}
+          note="Gave before; silent 12+ mo" />
+      </div>
+
+      {/* Step 3: Retention cohort chart */}
+      <ChartCard title="Donor Retention by Cohort" deck={DECK.retention_cohort}>
+        {retentionRows.length === 0 ? (
+          <div className="note-flag">No retention cohort data available.</div>
+        ) : (
+          <Lines
+            rows={retentionRows}
+            xKey="prior_year"
+            seriesKey="cohort"
+            valKey="retention_pct"
+            x={(y) => String(Math.round(Number(y)))}
+            nameFmt={(s) => s === 'first_year' ? 'First-year donors' : 'Repeat donors'}
+          />
+        )}
+        <div className="note-flag">
+          {minYear !== 9999 && (
+            <>The {minYear} bar is inflated — that&apos;s our 2023 data floor, so the &quot;prior year&quot; pool is artificially small. </>
+          )}
+          The most recent year ({maxYear}) is dropped because year+1 giving is still in progress.{' '}
+          The {maxYear - 1} cohort is still in progress — its retention rate reflects only the giving collected so far in {maxYear} and will rise as the year completes.
+        </div>
+      </ChartCard>
+
+      {/* Step 4: New vs returning donors */}
+      <ChartCard title="New vs. Returning Donors (monthly)" deck={DECK.donor_status}>
+        {statusTrend.length === 0 ? (
+          <div className="note-flag">No donor status data for this period.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={H}>
+            <BarChart data={statusTrend} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+              <CartesianGrid {...GRID} vertical={false} />
+              <XAxis dataKey="month" {...AXIS} tickFormatter={(m) => m?.slice(0, 7)} />
+              <YAxis {...AXIS} />
+              <Tooltip {...TOOLTIP} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="new_donors" name="New donors" fill={RM.orange} radius={[4, 4, 0, 0]} stackId="a" />
+              <Bar dataKey="returning_donors" name="Returning donors" fill={RM.blue} radius={[4, 4, 0, 0]} stackId="a" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
+
+      {/* Step 5: Sustainer flow */}
+      <ChartCard title="Sustainer Flow — Gained & Lost (monthly)" deck={DECK.sustainer_flow}>
+        {flowRaw.length === 0 ? (
+          <div className="note-flag">No sustainer flow data available.</div>
+        ) : allChurnZero ? (
+          <>
+            <ResponsiveContainer width="100%" height={H}>
+              <BarChart data={flowRaw} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+                <CartesianGrid {...GRID} vertical={false} />
+                <XAxis dataKey="month" {...AXIS} tickFormatter={(m) => m?.slice(0, 7)} />
+                <YAxis {...AXIS} />
+                <Tooltip {...TOOLTIP} />
+                <Bar dataKey="added" name="Added" fill={RM.blue} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="note-flag">Cancellations aren&apos;t dated in the source yet — only new sustainers are charted.</div>
+          </>
+        ) : (
+          <ResponsiveContainer width="100%" height={H}>
+            <BarChart data={flowRaw} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+              <CartesianGrid {...GRID} vertical={false} />
+              <XAxis dataKey="month" {...AXIS} tickFormatter={(m) => m?.slice(0, 7)} />
+              <YAxis {...AXIS} />
+              <Tooltip {...TOOLTIP} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="added" name="Added" fill={RM.blue} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="churned" name="Churned" fill={RM.red} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
+
+      {/* Step 6: LTV tiers */}
+      <ChartCard title="Lifetime Value Tiers" deck={DECK.ltv_tiers}>
+        {ltvTiers.length === 0 ? (
+          <div className="note-flag">No LTV tier data available.</div>
+        ) : (
+          <>
+            <table className="rm">
+              <thead>
+                <tr>
+                  <th>Tier</th>
+                  <th className="num">Donors</th>
+                  <th className="num">Total Given</th>
+                  <th className="num">% of Base</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ltvTiers.map((r, i) => (
+                  <tr key={i} style={r.tier === topTier.tier ? { fontWeight: 600, background: 'rgba(248,151,29,0.08)' } : undefined}>
+                    <td>{r.tier}</td>
+                    <td className="num">{num(r.donors)}</td>
+                    <td className="num">{money(r.total)}</td>
+                    <td className="num">{totalLtvDonors ? pct(100 * r.donors / totalLtvDonors) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {topTierPct != null && (
+              <div className="note-flag">
+                Top tier ({topTier.tier}) holds {topTierPct}% of donors but typically dominates total giving — the concentration that makes major gifts matter.
+              </div>
+            )}
+          </>
+        )}
+      </ChartCard>
+
+      {/* Step 7: Payment method mix */}
+      <ChartCard title="Payment Method Mix" deck={DECK.payment_mix} info={GLOSSARY.payment_method}>
+        {payMix.length === 0 ? (
+          <div className="note-flag">No payment method data available.</div>
+        ) : (
+          <div className="grid cols-2">
+            <ResponsiveContainer width="100%" height={H}>
+              <BarChart layout="vertical" data={payMix} margin={{ top: 8, right: 24, bottom: 4, left: 0 }}>
+                <CartesianGrid {...GRID} horizontal={false} />
+                <XAxis type="number" {...AXIS} tickFormatter={num} />
+                <YAxis type="category" dataKey="method" {...AXIS} width={100} />
+                <Tooltip {...TOOLTIP} />
+                <Bar dataKey="gifts" name="Gifts" fill={RM.blue} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={H}>
+              <BarChart layout="vertical" data={payMix} margin={{ top: 8, right: 24, bottom: 4, left: 0 }}>
+                <CartesianGrid {...GRID} horizontal={false} />
+                <XAxis type="number" {...AXIS} tickFormatter={moneyK} />
+                <YAxis type="category" dataKey="method" {...AXIS} width={100} />
+                <Tooltip {...TOOLTIP} formatter={(v) => money(v)} />
+                <Bar dataKey="total" name="Total $" fill={RM.orange} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </ChartCard>
+
+      {/* Step 8: Donor geography — two tables side by side */}
+      <ChartCard title="Donor Geography" deck={DECK.donor_geo}>
+        {geoState.length === 0 && geoZip.length === 0 ? (
+          <div className="note-flag">No geography data available.</div>
+        ) : (
+          <div className="grid cols-2">
+            <table className="rm">
+              <thead><tr><th>State</th><th className="num">Donors</th><th className="num">Lifetime</th></tr></thead>
+              <tbody>
+                {geoState.map((r, i) => (
+                  <tr key={i}><td>{r.state}</td><td className="num">{num(r.donors)}</td><td className="num">{money(r.lifetime)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <table className="rm">
+              <thead><tr><th>ZIP</th><th className="num">Donors</th><th className="num">Lifetime</th></tr></thead>
+              <tbody>
+                {geoZip.map((r, i) => (
+                  <tr key={i}><td>{r.zip}</td><td className="num">{num(r.donors)}</td><td className="num">{money(r.lifetime)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ChartCard>
+
+      {/* Step 9: Audience → giving funnel placeholder */}
+      <p style={{ fontStyle: 'italic', color: 'var(--rm-charcoal70, #3A4146)', fontSize: 13, marginTop: 8 }}>
+        Coming once the email source is connected — we&apos;ll show how audience turns into giving.
+      </p>
+    </>
+  )
+}
+
 // NOTE: Nielsen, Triton, and Mailchimp render functions are kept above and
 // will be reused by ProgramDirector / Underwriting / Social in Tasks 5–6.
 // They are intentionally NOT listed as TABS entries.
@@ -837,6 +1066,7 @@ export const TABS = {
   Overview,
   'Program Director': ProgramDirector,
   Underwriting: UnderwritingTab,
+  Development,
   Digital: DigitalReach,
   Social,
   'Finance / Exec': Financial,

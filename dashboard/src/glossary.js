@@ -14,6 +14,13 @@ export const GLOSSARY = {
   impressions: "Total times our content was shown — one person can count several times.",
   open_click_rate: "The share of email recipients who opened it, or clicked a link inside.",
   organic_traffic: "Visitors who found us through search or unpaid links, not ads.",
+  sustainer_share: "The share of our active donors who give every month as sustaining members. Public radio runs on these.",
+  sustainer_conversion: "Of donors who started with a one-time gift, the share who became monthly sustainers.",
+  avg_gift: "The typical gift — we show the median, since a few large gifts pull the average up.",
+  ltv: "Lifetime giving — every completed gift from a supporter, added up.",
+  lapsed_donor: "Someone who gave before but hasn't given in the last 12 months.",
+  new_donor: "Someone whose first gift to us landed in this period.",
+  payment_method: "How gifts come in — credit card, ACH bank transfer, check, and so on. ACH costs us less and tends to stick.",
 };
 
 export const SECTION_INTRO = {
@@ -22,6 +29,7 @@ export const SECTION_INTRO = {
   digital: "How people find and move through our sites, and the content that brings them in.",
   social: "How each brand's audience is growing and engaging, page by page.",
   finance: "The money: what we've raised against budget, where it comes from, and what's left over.",
+  development: "The health of our supporter base: how many give, whether they come back, and what they're worth over time. Org-wide — the brand filter doesn't apply here.",
 };
 
 export const DECK = {
@@ -34,4 +42,10 @@ export const DECK = {
   tsl_trend: "How long the average streaming listener stays with us, month over month.",
   top_web_content: "The stories pulling people to our sites.",
   device_split: "What our streaming audience listens on — useful for ad targeting.",
+  retention_cohort: "First-year donors are the leaky bucket; repeat donors stick. Here's the gap.",
+  donor_status: "New donors coming in versus our returning base, month by month.",
+  sustainer_flow: "Sustaining members gained and lost each month.",
+  ltv_tiers: "Where our lifetime giving concentrates — and how few donors hold most of it.",
+  payment_mix: "How gifts reach us, by method and dollars.",
+  donor_geo: "Where our supporters are.",
 };

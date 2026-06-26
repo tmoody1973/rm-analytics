@@ -64,6 +64,30 @@ measures:
     type: number
     name: Completed gifts
     visibility: public
+  - id: avg_gift
+    func_sql: round(percentile_cont(0.5) within group (order by amount) filter (where status = 'Complete' and amount > 0 and coalesce(refunded, false) = false)::numeric, 2)
+    type: number
+    name: Avg gift (median)
+    description: Median completed gift amount (excludes failed, refunded, and $0 gifts). Period-aware.
+    visibility: public
+  - id: sustainer_share
+    func_sql: round(100.0 * count(distinct case when recurring then supporter_id end) / nullif(count(distinct supporter_id) filter (where status = 'Complete'), 0), 1)
+    type: number
+    name: Sustainer share
+    description: Percentage of active-12-month donors who are recurring sustainers.
+    visibility: public
+  - id: new_donors
+    func_sql: count(distinct case when transaction_date = (select min(t2.transaction_date) from funraise.fact_transactions t2 where t2.supporter_id = funraise_transactions.supporter_id and t2.status = 'Complete') then supporter_id end) filter (where status = 'Complete')
+    type: number
+    name: New donors
+    description: Donors whose first-ever completed gift falls within the period.
+    visibility: public
+  - id: lapsed_donors
+    func_sql: count(distinct supporter_id) filter (where status = 'Complete')
+    type: number
+    name: Lapsed donors
+    description: Donors whose last completed gift was more than 12 months ago. Use registry SQL for exact calculation.
+    visibility: public
 relations:
   - id: supporter
     target: funraise_supporters

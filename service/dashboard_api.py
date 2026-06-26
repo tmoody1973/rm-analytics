@@ -168,6 +168,108 @@ QUERIES: dict[str, str] = {
         ORDER BY views DESC
         LIMIT 50
     """,
+    # ── Development Director tab — Funraise donor queries ──────────────────
+    "donor_retention_trend": """
+        WITH gifts AS (
+          SELECT supporter_id, extract(year FROM transaction_date)::int AS yr
+          FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1,2),
+        first_yr AS (SELECT supporter_id, min(yr) AS fy FROM gifts GROUP BY 1)
+        SELECT g.yr AS prior_year,
+               CASE WHEN g.yr = f.fy THEN 'first_year' ELSE 'repeat' END AS cohort,
+               count(DISTINCT g.supporter_id) AS donors,
+               round(100.0*count(DISTINCT g2.supporter_id)/NULLIF(count(DISTINCT g.supporter_id),0),1) AS retention_pct
+        FROM gifts g JOIN first_yr f USING (supporter_id)
+        LEFT JOIN gifts g2 ON g2.supporter_id=g.supporter_id AND g2.yr=g.yr+1
+        GROUP BY g.yr, cohort ORDER BY g.yr, cohort
+    """,
+    "donor_status_trend": """
+        WITH first_gift AS (
+          SELECT supporter_id, min(transaction_date) AS fg
+          FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1),
+        monthly AS (
+          SELECT DISTINCT supporter_id, date_trunc('month',transaction_date)::date AS m
+          FROM funraise.fact_transactions WHERE status='Complete')
+        SELECT m.m AS month,
+               count(*) FILTER (WHERE date_trunc('month',f.fg)=m.m) AS new_donors,
+               count(*) FILTER (WHERE date_trunc('month',f.fg)<m.m) AS returning_donors
+        FROM monthly m JOIN first_gift f USING (supporter_id)
+        GROUP BY m.m ORDER BY m.m
+    """,
+    "sustainer_flow": """
+        WITH adds AS (
+          SELECT date_trunc('month',started_at)::date AS m, count(*) AS added
+          FROM funraise.fact_subscriptions WHERE started_at IS NOT NULL GROUP BY 1),
+        churn AS (
+          SELECT date_trunc('month',canceled_at)::date AS m, count(*) AS churned
+          FROM funraise.fact_subscriptions WHERE canceled_at IS NOT NULL AND status='Cancelled' GROUP BY 1)
+        SELECT coalesce(a.m,c.m) AS month, coalesce(a.added,0) AS added, coalesce(c.churned,0) AS churned
+        FROM adds a FULL OUTER JOIN churn c ON a.m=c.m ORDER BY month
+    """,
+    "ltv_tiers": """
+        SELECT CASE WHEN lifetime_total<100 THEN '<$100'
+                    WHEN lifetime_total<500 THEN '$100-499'
+                    WHEN lifetime_total<1000 THEN '$500-999'
+                    WHEN lifetime_total<5000 THEN '$1K-4,999'
+                    ELSE '$5K+' END AS tier,
+               count(*) AS donors, round(sum(lifetime_total)) AS total
+        FROM funraise.dim_supporters WHERE lifetime_total>0
+        GROUP BY tier ORDER BY min(lifetime_total)
+    """,
+    "payment_method_mix": """
+        SELECT
+            CASE lower(replace(coalesce(nullif(payment_method,''),'other'),'_',' '))
+                WHEN 'credit card' THEN 'Credit Card'
+                WHEN 'ach'         THEN 'ACH'
+                WHEN 'physical check' THEN 'Physical Check'
+                WHEN 'personal check' THEN 'Physical Check'
+                WHEN 'check'       THEN 'Physical Check'
+                WHEN 'apple pay'   THEN 'Apple Pay'
+                WHEN 'paypal'      THEN 'PayPal'
+                WHEN 'cash'        THEN 'Cash'
+                WHEN 'stock'       THEN 'Stock'
+                WHEN 'donor advised fund' THEN 'Donor Advised Fund'
+                WHEN 'external capture' THEN 'Other'
+                WHEN 'other'       THEN 'Other'
+                ELSE 'Other'
+            END AS method,
+            count(*) AS gifts,
+            round(sum(amount)) AS total
+        FROM funraise.fact_transactions
+        WHERE status='Complete' AND coalesce(refunded,false)=false
+        GROUP BY method ORDER BY total DESC
+    """,
+    "donor_geo_state": """
+        SELECT state, count(*) AS donors, round(sum(lifetime)) AS lifetime
+        FROM (
+            SELECT
+                CASE upper(trim(coalesce(nullif(state,''),'Unknown')))
+                    WHEN 'WISCONSIN'     THEN 'WI'
+                    WHEN 'ILLINOIS'      THEN 'IL'
+                    WHEN 'CALIFORNIA'    THEN 'CA'
+                    WHEN 'MINNESOTA'     THEN 'MN'
+                    WHEN 'COLORADO'      THEN 'CO'
+                    WHEN 'NEW YORK'      THEN 'NY'
+                    WHEN 'FLORIDA'       THEN 'FL'
+                    WHEN 'VIRGINIA'      THEN 'VA'
+                    WHEN 'MICHIGAN'      THEN 'MI'
+                    WHEN 'WASHINGTON'    THEN 'WA'
+                    WHEN 'OREGON'        THEN 'OR'
+                    WHEN 'PENNSYLVANIA'  THEN 'PA'
+                    WHEN 'ARIZONA'       THEN 'AZ'
+                    WHEN 'NEW JERSEY'    THEN 'NJ'
+                    ELSE upper(trim(coalesce(nullif(state,''),'Unknown')))
+                END AS state,
+                lifetime_total AS lifetime
+            FROM funraise.dim_supporters WHERE lifetime_total>0
+        ) sub
+        GROUP BY state ORDER BY donors DESC LIMIT 15
+    """,
+    "donor_geo_zip": """
+        SELECT coalesce(nullif(postal_code,''),'Unknown') AS zip,
+               count(*) AS donors, round(sum(lifetime_total)) AS lifetime
+        FROM funraise.dim_supporters WHERE lifetime_total>0
+        GROUP BY zip ORDER BY donors DESC LIMIT 15
+    """,
 }
 
 
@@ -177,6 +279,27 @@ def _jsonable(v: object):
     if isinstance(v, (date, datetime)):
         return v.isoformat()
     return v
+
+
+def _dev_kpis_from_registry() -> dict:
+    """Fetch Development Director KPIs from the metric registry.
+
+    Returns a single dict with five donor metrics:
+    - sustainer_share      (percent of active donors who are sustainers)
+    - donor_retention_pct  (share of prior-year donors who gave again)
+    - avg_gift             (median; also carries mean)
+    - new_donors           (first gift in last 365 days)
+    - lapsed_donors        (last gift > 12 months ago)
+    """
+    avg_gift_row = run_metric("avg_gift")["data"][0]
+    return {
+        "sustainer_share": run_metric("sustainer_share")["data"][0]["value"],
+        "donor_retention_pct": run_metric("donor_retention_pct")["data"][0]["value"],
+        "avg_gift": avg_gift_row.get("value"),
+        "avg_gift_mean": avg_gift_row.get("mean"),
+        "new_donors": run_metric("new_donors")["data"][0]["value"],
+        "lapsed_donors": run_metric("lapsed_donors")["data"][0]["value"],
+    }
 
 
 def _exec_kpis_from_registry() -> list[dict]:
@@ -211,4 +334,6 @@ def dashboard_data() -> dict:
         conn.close()
     # Headline KPIs via registry (one definition — no duplicate SQL).
     out["exec_kpis"] = _exec_kpis_from_registry()
+    # Development Director KPIs via registry.
+    out["dev_kpis"] = _dev_kpis_from_registry()
     return out
