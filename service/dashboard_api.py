@@ -245,6 +245,27 @@ def _jsonable(v: object):
     return v
 
 
+def _dev_kpis_from_registry() -> dict:
+    """Fetch Development Director KPIs from the metric registry.
+
+    Returns a single dict with five donor metrics:
+    - sustainer_share      (percent of active donors who are sustainers)
+    - donor_retention_pct  (share of prior-year donors who gave again)
+    - avg_gift             (median; also carries mean)
+    - new_donors           (first gift in last 365 days)
+    - lapsed_donors        (last gift > 12 months ago)
+    """
+    avg_gift_row = run_metric("avg_gift")["data"][0]
+    return {
+        "sustainer_share": run_metric("sustainer_share")["data"][0]["value"],
+        "donor_retention_pct": run_metric("donor_retention_pct")["data"][0]["value"],
+        "avg_gift": avg_gift_row.get("value"),
+        "avg_gift_mean": avg_gift_row.get("mean"),
+        "new_donors": run_metric("new_donors")["data"][0]["value"],
+        "lapsed_donors": run_metric("lapsed_donors")["data"][0]["value"],
+    }
+
+
 def _exec_kpis_from_registry() -> list[dict]:
     """Fetch the four headline KPIs from the metric registry (single source of truth).
 
@@ -277,4 +298,6 @@ def dashboard_data() -> dict:
         conn.close()
     # Headline KPIs via registry (one definition — no duplicate SQL).
     out["exec_kpis"] = _exec_kpis_from_registry()
+    # Development Director KPIs via registry.
+    out["dev_kpis"] = _dev_kpis_from_registry()
     return out

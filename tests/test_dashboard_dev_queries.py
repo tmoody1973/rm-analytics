@@ -95,3 +95,25 @@ def test_donor_geo_zip_shape():
     r = rows[0]
     assert "zip" in r, "missing zip"
     assert "donors" in r, "missing donors"
+
+
+# ── dev_kpis registry-backed shape tests ───────────────────────────────────
+
+DEV_KPI_FIELDS = {"sustainer_share", "donor_retention_pct", "avg_gift", "avg_gift_mean", "new_donors", "lapsed_donors"}
+
+
+def test_dev_kpis_key_present():
+    p = _payload()
+    assert "dev_kpis" in p, "payload missing dev_kpis key"
+
+
+def test_dev_kpis_has_all_fields():
+    kpis = _payload()["dev_kpis"]
+    for field in DEV_KPI_FIELDS:
+        assert field in kpis, f"dev_kpis missing field: {field}"
+
+
+def test_dev_kpis_avg_gift_has_value_and_mean():
+    kpis = _payload()["dev_kpis"]
+    assert kpis["avg_gift"] is not None, "dev_kpis.avg_gift (median) is None"
+    assert kpis["avg_gift_mean"] is not None, "dev_kpis.avg_gift_mean is None"
