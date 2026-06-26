@@ -76,6 +76,19 @@ QUERIES: dict[str, str] = {
         WHERE section='Estimates' AND metric='AQH Persons' AND period_date IS NOT NULL
         ORDER BY period_date, station_code
     """,
+    "nielsen_cume": """
+        SELECT station_code, value_numeric AS cume
+        FROM nielsen.fact_vital_signs
+        WHERE section='Estimates' AND metric='Avg Weekly Cume Persons'
+          AND period_date=(SELECT max(period_date) FROM nielsen.fact_vital_signs WHERE metric='Avg Weekly Cume Persons')
+        ORDER BY cume DESC
+    """,
+    "nielsen_cume_trend": """
+        SELECT station_code, period_label, period_date::text AS period_date, value_numeric AS cume
+        FROM nielsen.fact_vital_signs
+        WHERE section='Estimates' AND metric='Avg Weekly Cume Persons' AND period_date IS NOT NULL
+        ORDER BY period_date, station_code
+    """,
     "tlh_by_station": """
         SELECT station_code, month_start::text AS month, round(tlh) AS tlh, round(aas,1) AS aas, round(cume) AS cume
         FROM wms.fact_monthly_cume ORDER BY month_start, station_code
