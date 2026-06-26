@@ -880,9 +880,7 @@ function Development(d, f) {
           note={dk.avg_gift_mean != null ? `Mean ${money(dk.avg_gift_mean)}` : undefined} />
         <Kpi label="Revenue · 12 mo" value={money(k.revenue_12mo)} note="Completed gifts" />
         <Kpi label="Active Sustainers" value={num(k.active_sustainers)} note="Recurring plans" />
-        <div className="grid" style={{ display: 'contents' }}>
-          <Kpi label="New Donors" value={num(dk.new_donors)} info={GLOSSARY.new_donor} note="First gift · last 12 mo" />
-        </div>
+        <Kpi label="New Donors" value={num(dk.new_donors)} info={GLOSSARY.new_donor} note="First gift · last 12 mo" />
       </div>
       <div className="grid cols-4">
         <Kpi label="Lapsed Donors" value={num(dk.lapsed_donors)} info={GLOSSARY.lapsed_donor}
@@ -899,7 +897,7 @@ function Development(d, f) {
             xKey="prior_year"
             seriesKey="cohort"
             valKey="retention_pct"
-            x={(y) => String(y)}
+            x={(y) => String(Math.round(Number(y)))}
             nameFmt={(s) => s === 'first_year' ? 'First-year donors' : 'Repeat donors'}
           />
         )}
@@ -907,7 +905,8 @@ function Development(d, f) {
           {minYear !== 9999 && (
             <>The {minYear} bar is inflated — that&apos;s our 2023 data floor, so the &quot;prior year&quot; pool is artificially small. </>
           )}
-          The most recent year ({maxYear}) is dropped because year+1 giving is still in progress.
+          The most recent year ({maxYear}) is dropped because year+1 giving is still in progress.{' '}
+          The {maxYear - 1} cohort is still in progress — its retention rate reflects only the giving collected so far in {maxYear} and will rise as the year completes.
         </div>
       </ChartCard>
 
