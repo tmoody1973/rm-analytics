@@ -477,6 +477,8 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 012_grants.sql         ← PLANNED (Phase 11+)
 │   ├── 013_events.sql         ← PLANNED (Phase 11+)
 │   ├── 014_nielsen.sql        ← APPLIED — Nielsen Vital Signs (long/unpivoted)
+│   ├── 015_ig_followers.sql   ← APPLIED — meta_organic.fact_ig_followers_daily (loader blocked on token, see MOO-174)
+│   ├── 016_readonly_role.sql  ← APPLIED — rm_readonly Neon role (SELECT allowlist; funraise excluded) for assistant SQL fallback
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
@@ -633,6 +635,9 @@ Never commit secrets. Never paste them in chat without rotating after.
 - [x] Funraise webhook configured + verified (real-time gifts; FUNRAISE_* Fly secrets set)
 - [x] Nielsen upload page live — `POST /upload/nielsen` (open, no auth per request)
 - [x] Funraise rollup cron — Fly scheduled machine `funraise-rollup-nightly` (--schedule daily)
+- [x] Metric service live — `GET /api/metric/{id}?brand=&period=&group_by=` (7 metrics; registry in `metrics/`) [MOO-172/175]
+- [x] Read-only role `rm_readonly` on Neon (SELECT allowlist; **funraise blocked**; read-only + 15s timeout) [MOO-173]
+- [x] Guarded SQL endpoint code merged — `POST /api/ask-sql` (single SELECT/WITH, validator + outer LIMIT wrap, runs on `rm_readonly`) [MOO-173]. **Fly secret `DATABASE_URL_RO` STAGED — applies on next `rm-data-loader` deploy.**
 - [ ] Coupler.io importers running (Meta, GA, ESP)
 - [ ] Slack alerting wired for all sources
 - [ ] All Triton scheduled queries enabled (user-side: follow `docs/triton-scheduled-queries-setup.md`)
