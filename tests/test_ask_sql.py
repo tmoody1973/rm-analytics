@@ -53,13 +53,14 @@ def test_allows_trailing_semicolon():
 
 def test_caps_oversized_limit():
     out = validate_sql("SELECT * FROM dim.stations LIMIT 99999")
-    assert "99999" not in out
-    assert "1000" in out
+    assert "_ask_sql_capped" in out
+    assert out.strip().lower().endswith("limit 1000")
 
 
 def test_keeps_small_limit():
     out = validate_sql("SELECT * FROM dim.stations LIMIT 5")
-    assert out.strip().lower().endswith("limit 5")
+    assert "limit 5" in out.lower()          # inner bound preserved
+    assert out.strip().lower().endswith("limit 1000")  # outer cap added
 
 
 def test_allows_cte():
@@ -105,3 +106,29 @@ def test_live_donor_table_rejected():
                     json={"sql": "SELECT count(*) FROM funraise.dim_supporters"})
     assert r.status_code == 400
     assert "funraise" in r.json()["detail"].lower()
+
+
+def test_cte_only_limit_still_capped():
+    # the only LIMIT is inside the CTE; outer result must still be capped
+    out = validate_sql(
+        "WITH t AS (SELECT station_code FROM dim.stations LIMIT 3) "
+        "SELECT * FROM t"
+    )
+    assert out.strip().lower().endswith("limit 1000")
+    assert "_ask_sql_capped" in out
+
+
+def test_subquery_limit_still_capped():
+    out = validate_sql(
+        "SELECT * FROM dim.stations a "
+        "JOIN (SELECT station_code FROM dim.stations LIMIT 5) b "
+        "ON a.station_code = b.station_code"
+    )
+    assert out.strip().lower().endswith("limit 1000")
+
+
+def test_string_literal_with_limit_not_rewritten():
+    # a 'limit 99999' literal must be preserved, not edited by the capper
+    out = validate_sql("SELECT 'limit 99999' AS label FROM dim.stations")
+    assert "limit 99999" in out          # literal intact
+    assert out.strip().lower().endswith("limit 1000")
