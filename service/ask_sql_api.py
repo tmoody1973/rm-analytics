@@ -41,9 +41,11 @@ _FORBIDDEN = re.compile(
     r"comment|copy|call|do|vacuum|analyze|reindex|cluster|refresh|set|reset)\b",
     re.IGNORECASE,
 )
-_CTE_NAME = re.compile(r"(?:\bwith\b|,)\s+([a-z_]\w*)\s+as\s*\(", re.IGNORECASE)
+_CTE_NAME = re.compile(r"(?:\bwith\b|,)\s+([a-z_]\w*)(?:\s*\([^)]*\))?\s+as\s*\(", re.IGNORECASE)
 _REL = re.compile(r"\b(?:from|join)\s+([a-z_]\w*)(?:\.([a-z_]\w*))?", re.IGNORECASE)
 _LIMIT = re.compile(r"\blimit\b\s+(\d+)", re.IGNORECASE)
+_FETCH_FIRST = re.compile(r"\bfetch\s+(?:first|next)\b", re.IGNORECASE)
+_LIMIT_ALL = re.compile(r"\blimit\s+all\b", re.IGNORECASE)
 
 
 class SqlValidationError(ValueError):
@@ -79,7 +81,9 @@ def _check_relations(cleaned: str) -> bool:
 
 
 def _apply_limit(cleaned: str) -> str:
-    m = _LIMIT.search(cleaned)
+    m = None
+    for candidate in _LIMIT.finditer(cleaned):
+        m = candidate
     if m:
         n = int(m.group(1))
         if n > MAX_ROWS:
@@ -110,10 +114,14 @@ def validate_sql(raw: str) -> str:
         raise SqlValidationError(f"forbidden keyword: {bad.group(0).lower()}")
 
     _check_relations(cleaned)
+    if _FETCH_FIRST.search(cleaned):
+        raise SqlValidationError("use LIMIT instead of FETCH FIRST/NEXT")
+    if _LIMIT_ALL.search(cleaned):
+        cleaned = _LIMIT_ALL.sub(f"LIMIT {MAX_ROWS}", cleaned)
     return _apply_limit(cleaned)
 
 
-def _jsonable(v: object):
+def _jsonable(v: object) -> object:
     if isinstance(v, Decimal):
         return float(v)
     if isinstance(v, (date, datetime)):
@@ -151,5 +159,9 @@ def ask_sql(req: AskSqlRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     except psycopg.errors.InsufficientPrivilege:
         raise HTTPException(status_code=403, detail="permission denied for relation")
+    except psycopg.OperationalError:
+        raise HTTPException(status_code=503, detail="database unavailable")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except psycopg.Error as e:
-        raise HTTPException(status_code=400, detail=f"query error: {e.sqlstate}")
+        raise HTTPException(status_code=400, detail=f"query error: {e.sqlstate or str(e)}")
