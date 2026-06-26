@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/copilotkit.ts": {
+      "maxDuration": 60
+    }
+  }
+}

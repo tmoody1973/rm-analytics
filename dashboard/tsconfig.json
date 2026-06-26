@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    /* Target Node 20 (Vercel default Node runtime) */
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+
+    /* Type safety */
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    /* Emit: tsc is used only for type-checking, not building (Vercel compiles api/ at deploy) */
+    "noEmit": true,
+
+    /* Path roots */
+    "baseUrl": ".",
+    "paths": {}
+  },
+  "include": ["api/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
