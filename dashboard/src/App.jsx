@@ -82,7 +82,11 @@ export default function App() {
             : TABS[tab](data, filters)}
         </main>
 
-        <footer>Radio Milwaukee · Executive Dashboard · Live from the analytics warehouse · Board of Directors</footer>
+        <footer>
+          Radio Milwaukee · Executive Dashboard · Live from the analytics warehouse · Board of Directors
+          {' · '}
+          <a className="footer-link" href="https://rm-data-loader.fly.dev/upload/nielsen" target="_blank" rel="noopener noreferrer">Upload Nielsen report</a>
+        </footer>
       </div>
 
       <CopilotSidebar
