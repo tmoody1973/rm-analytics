@@ -15,19 +15,24 @@ Flow:
 """
 from __future__ import annotations
 
+import html
+import importlib
 import io
+import json
 import logging
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from svix.webhooks import WebhookVerificationError
 
 from . import email, slack
 from .agentmail_client import fetch_attachment_bytes
-from .auth import verify_agentmail
+from .auth import verify_agentmail, verify_sheet_secret
 from .router import known_tags, resolve
 
 
@@ -40,6 +45,27 @@ log = logging.getLogger("rm-data-loader")
 ALLOWED_INBOX = "triton-ingest@agentmail.to"
 
 app = FastAPI(title="rm-data-loader", version="0.1.0")
+
+# The RM Executive Dashboard web app (separate origin) reads /api/dashboard.
+# Read-only aggregate data, GET only.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+from . import ask_sql_api, metric_api
+
+app.include_router(metric_api.router)
+app.include_router(ask_sql_api.router)
+
+
+@app.get("/api/dashboard")
+def api_dashboard() -> dict:
+    """All data the RM Executive Dashboard app needs, as one JSON payload."""
+    from . import dashboard_api
+    return dashboard_api.dashboard_data()
 
 
 @app.get("/health")
@@ -126,6 +152,135 @@ async def webhook_wms(request: Request) -> dict[str, Any]:
     log.info("loaded %s: %s", route.tag, stats)
     _notify_success(route.tag, stats)
     return {"ok": True, "tag": route.tag, "stats": stats}
+
+
+# Map a sheet "dataset" to its loader module. Unknown datasets fall back to the
+# generic tabular loader. Loaders resolve because the router import (above) put the
+# loaders/ dir on sys.path.
+_SHEET_LOADERS = {"finance_kpi": "load_finance_sheet"}
+
+
+@app.post("/webhook/sheet")
+async def webhook_sheet(request: Request) -> dict[str, Any]:
+    """Google Sheets 'Sync to Neon' push (finance KPIs today; more later)."""
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    try:
+        verify_sheet_secret(headers)
+    except WebhookVerificationError as exc:
+        log.warning("sheet secret verification failed: %s", exc)
+        raise HTTPException(status_code=401, detail="invalid secret") from exc
+
+    payload = await request.json()
+    dataset = payload.get("dataset") or "?"
+    tag = f"[SHEET-{dataset}]"
+
+    loader = importlib.import_module(_SHEET_LOADERS.get(dataset, "load_sheet_sync"))
+    try:
+        stats = loader.load(payload)
+    except Exception as exc:
+        log.exception("sheet loader failed for dataset=%s", dataset)
+        _notify_failure(tag, f"loader failed: {exc}")
+        raise HTTPException(status_code=500, detail="loader failed") from exc
+
+    log.info("loaded %s: %s", tag, stats)
+    _notify_success(tag, stats)
+    return {"ok": True, "dataset": dataset, "stats": stats}
+
+
+@app.post("/webhook/funraise")
+async def webhook_funraise(request: Request) -> Any:
+    """Funraise transaction webhook -> funraise.fact_transactions.
+
+    On the first (subscription) call Funraise sends an `x-hook-secret` header with
+    an empty body; we echo it back to confirm the subscription. Real events carry a
+    JSON body. TODO: verify the signature with FUNRAISE_WEBHOOK_SECRET once confirmed.
+    """
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    body = await request.body()
+
+    hook_secret = headers.get("x-hook-secret")
+    if hook_secret and not body:
+        return Response(headers={"x-hook-secret": hook_secret})
+
+    try:
+        payload = json.loads(body or b"{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="invalid json") from exc
+
+    loader = importlib.import_module("load_funraise_webhook")
+    try:
+        stats = loader.load(payload)
+    except Exception as exc:
+        log.exception("funraise loader failed")
+        _notify_failure("[FUNRAISE]", f"loader failed: {exc}")
+        raise HTTPException(status_code=500, detail="loader failed") from exc
+
+    log.info("loaded [FUNRAISE]: %s", stats)
+    _notify_success("[FUNRAISE]", stats)
+    return {"ok": True, "stats": stats}
+
+
+_NIELSEN_FORM = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Nielsen Vital Signs Upload</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+ body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:3rem auto;padding:0 1rem;color:#1a1a1a}
+ h1{font-size:1.4rem}
+ .card{border:1px solid #e2e2e2;border-radius:12px;padding:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+ input[type=file]{margin:1rem 0;display:block}
+ button{background:#5b21b6;color:#fff;border:0;border-radius:8px;padding:.7rem 1.4rem;font-size:1rem;cursor:pointer}
+ .hint{color:#555;font-size:.92rem;line-height:1.55} .ok{color:#15803d;font-weight:600} .err{color:#b91c1c;font-weight:600}
+</style></head><body>
+<h1>&#128251; Nielsen Vital Signs &mdash; Upload</h1>
+<div class="card">
+<p class="hint">Export the <b>Vital Signs Trend</b> report from Nielsen (any station, demo, or daypart)
+as <b>CSV</b>, then upload it here. The file describes itself &mdash; you don't need to pick anything.
+Re-uploading is safe: new months are added, existing months are refreshed, nothing is duplicated.</p>
+<form method="post" enctype="multipart/form-data" action="/upload/nielsen">
+<input type="file" name="file" accept=".csv" required>
+<button type="submit">Upload to warehouse</button>
+</form>
+</div>
+__RESULT__
+</body></html>"""
+
+
+def _nielsen_page(result_html: str = "") -> str:
+    return _NIELSEN_FORM.replace("__RESULT__", result_html)
+
+
+@app.get("/upload/nielsen", response_class=HTMLResponse)
+def nielsen_form() -> str:
+    return _nielsen_page()
+
+
+@app.post("/upload/nielsen", response_class=HTMLResponse)
+async def nielsen_upload(file: UploadFile = File(...)) -> str:
+    """Browser upload of a Nielsen Vital Signs CSV -> nielsen.fact_vital_signs."""
+    data = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as fh:
+        fh.write(data)
+        tmp = Path(fh.name)
+
+    loader = importlib.import_module("load_nielsen")
+    try:
+        stats = loader.load(str(tmp))
+    except Exception as exc:
+        log.exception("nielsen upload failed")
+        _notify_failure("[NIELSEN]", f"upload failed: {exc}")
+        return _nielsen_page(f'<p class="err">&#10060; Upload failed: {html.escape(str(exc))}</p>')
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+    log.info("loaded [NIELSEN]: %s", stats)
+    _notify_success("[NIELSEN]", stats)
+    msg = (f'<p class="ok">&#9989; Loaded {html.escape(stats["station"])} &middot; '
+           f'{html.escape(stats["demo"])} &middot; {html.escape(stats["daypart"])} '
+           f'&mdash; {stats["rows_upserted"]} rows across {stats["periods"]} periods.</p>')
+    return _nielsen_page(msg)
 
 
 def _notify_success(tag: str, stats: dict[str, Any]) -> None:

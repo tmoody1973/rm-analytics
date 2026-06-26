@@ -1,0 +1,37 @@
+// Single source of truth for plain-English definitions (RM voice). The same
+// strings feed the ⓘ tooltips now and the Phase-2 assistant prompt later.
+export const GLOSSARY = {
+  aqh_share: "Of all the radio listening happening in metro Milwaukee in an average quarter-hour, the slice tuned to us. Higher is better; we're ranked against every station in the market.",
+  aqh_persons: "The average number of people listening in any given 15-minute window.",
+  cume: "How many different people tuned in at least once during the week — our reach, not our depth.",
+  tsl: "Time spent listening — how long the average listener stays with us. Rising TSL means the programming is holding people.",
+  tlh: "Total listening hours — every hour of streaming, added up across all listeners. Our total streaming volume.",
+  aas: "Average active sessions — how many streams are playing at once, on average. A live read on stream audience.",
+  sustainer_mrr: "Monthly recurring revenue from sustaining members — the income we can count on every month. Target $50K.",
+  donor_retention: "Of the supporters who gave before this year, the share who gave again. Are we keeping the people we earn?",
+  active_donor: "Someone who's given at least once in the last 12 months.",
+  reach: "The number of unique people who saw our posts.",
+  impressions: "Total times our content was shown — one person can count several times.",
+  open_click_rate: "The share of email recipients who opened it, or clicked a link inside.",
+  organic_traffic: "Visitors who found us through search or unpaid links, not ads.",
+};
+
+export const SECTION_INTRO = {
+  program_director: "Who's listening, when, and whether they're staying — across the broadcast signal and the streams.",
+  underwriting: "The audience we can offer sponsors — by daypart, device, and demo.",
+  digital: "How people find and move through our sites, and the content that brings them in.",
+  social: "How each brand's audience is growing and engaging, page by page.",
+  finance: "The money: what we've raised against budget, where it comes from, and what's left over.",
+};
+
+export const DECK = {
+  revenue_vs_budget: "Where we stand against the fiscal-year plan, month by month.",
+  donor_retention: "We aim to keep 45–50% of last year's donors. Here's how we're tracking.",
+  aqh_share_trend: "Our share of Milwaukee's radio listening over the last 14 surveys.",
+  sustainer_mrr: "Predictable monthly giving from sustaining members, against the $50K goal.",
+  daypart_aas: "When our streams are busiest — average concurrent listeners through the day.",
+  hourly_grid: "The week at a glance: where listening peaks by hour and day.",
+  tsl_trend: "How long the average streaming listener stays with us, month over month.",
+  top_web_content: "The stories pulling people to our sites.",
+  device_split: "What our streaming audience listens on — useful for ad targeting.",
+};

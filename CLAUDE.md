@@ -78,6 +78,9 @@ neondb
 ├── ────── EVENTS / EARNED ──────
 ├── events                  ← Event ticketing, attendance, revenue (AXS, etc.)
 │
+├── ────── BROADCAST RATINGS ──────
+├── nielsen                 ← Nielsen PPM "Vital Signs" (broadcast AQH/cume/TSL) — separate from streaming
+│
 ├── ────── SHARED + DERIVED ──────
 ├── dim                     ← Shared dimensions (stations, dates, channels)
 └── marts                   ← Cross-source views for dashboards
@@ -109,11 +112,16 @@ underwriting questions are inherently monthly.
 
 ### `funraise`
 Mirrors Funraise's API shape:
-- `funraise.fact_transactions` — every donation (one-time + recurring),
-  amount, fee, net, supporter_id, campaign_id, date, payment method,
-  UTM source/medium/campaign
-- `funraise.dim_supporters` — donors (name, email, first donation, lifetime
-  total, supporter_id is PK)
+- `funraise.fact_transactions` — every donation (one-time + recurring; the
+  `recurring` bool flags which), amount, fee, net, supporter_id, campaign_id,
+  date, payment method, UTM source/medium/campaign, plus **designation/fund +
+  restricted flag, donor-covered fee (+amount), refund status (+amount/date),
+  gift channel, and recurring_plan_id** linking back to a subscription
+- `funraise.dim_supporters` — donors. **PII-MINIMIZED (decided 2026-06-25):
+  NO names, NO raw email, NO phone.** Stores `supporter_id` (PK, opaque Funraise
+  key), `email_sha256` (one-way hash — `loaders/_common.py:hash_email`, lets us
+  match donors to the ESP list without storing a readable address),
+  city/state/postal_code/country, first_donation_at, lifetime_total
 - `funraise.fact_subscriptions` — recurring giving plans (active, churned,
   amount, frequency)
 - `funraise.dim_campaigns` — Funraise campaign metadata
@@ -191,6 +199,26 @@ Maintained manually for now.
   net_revenue, station(s) promoted
 - `events.fact_ticket_sales` — per-event ticket transactions if available
 Populated from AXS Group API (when license is wired) or manual XLSX uploads.
+
+### `nielsen` (broadcast ratings) — LIVE
+**Nielsen PPM audience for the FM broadcast signal (NOT streaming — keep separate
+from `wms.*`; join only in marts for a "total reach" story).**
+- `nielsen.fact_vital_signs` — ONE long/unpivoted table. The Nielsen "Vital Signs
+  Trend" export is a pivoted wide grid (metrics × ~14 survey periods, grouped into
+  sections: Estimates, P1, In-Tab, Detailed Daypart Trend, Age/Gender/Ethnic
+  Composition). The loader unpivots it to one row per
+  `(station_code, demo, daypart, period_label, section, metric)` → `value_numeric`
+  (+ `value_raw`, `rank` for AQH share, `unit`). `period_date` is best-effort
+  (HOL = Holiday book → mid-Dec sentinel so it charts between Dec/Jan).
+- **Each report self-describes**: station from the title (RM88/HYFIN map, fails
+  loud on unknown), demo + daypart + market from the preamble. So HYFIN vs Radio
+  Milwaukee and different dayparts/demos coexist by PK with no collision.
+- **Idempotent**: monthly trend reports overlap 13 of 14 months — re-upload just
+  refreshes overlaps, adds the new month, and RETAINS aged-out months (history
+  grows beyond the 14-month window).
+- **Ingest**: manual export → **open browser upload page** `POST /upload/nielsen`
+  (no auth, per request) → `load_nielsen` → Neon. Also runnable locally:
+  `python loaders/load_nielsen.py FILE`. Licensed/confidential data — keep internal.
 
 ### `dim` (shared)
 - `dim.stations` — the 4 station codes (RM88, HYFIN, RM414, RLR)
@@ -440,13 +468,17 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 003_wms_facts_revision.sql  ← APPLIED — monthly geo/device + weekly cume
 │   ├── 004_wms_facts_revision_geo_device.sql  ← APPLIED — geo City/DMA + device family/device
 │   ├── 005_wms_cume_revision.sql  ← APPLIED — daily/monthly cume → 5-metric shape
-│   ├── 006_funraise.sql       ← PLANNED (Phase 9) — Funraise tables
-│   ├── 007_meta.sql           ← PLANNED (Phase 10) — Both Meta schemas
-│   ├── 008_ga.sql             ← PLANNED (Phase 10)
-│   ├── 009_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
-│   ├── 010_underwriting.sql   ← PLANNED (Phase 11+)
-│   ├── 011_grants.sql         ← PLANNED (Phase 11+)
-│   ├── 012_events.sql         ← PLANNED (Phase 11+)
+│   ├── 006_funraise.sql       ← APPLIED — Funraise tables (PII-minimized; +extras, transaction_at, rollup cols)
+│   ├── 007_meta.sql           ← APPLIED — meta_organic + meta_ads tables
+│   ├── 008_ga.sql             ← APPLIED — GA4 sessions/events/pages
+│   ├── 009_email_esp.sql      ← APPLIED — Mailchimp campaigns/lists/subscriber events
+│   ├── 010_finance.sql        ← PLANNED (Phase 11) — Finance + budget tables
+│   ├── 011_underwriting.sql   ← PLANNED (Phase 11+)
+│   ├── 012_grants.sql         ← PLANNED (Phase 11+)
+│   ├── 013_events.sql         ← PLANNED (Phase 11+)
+│   ├── 014_nielsen.sql        ← APPLIED — Nielsen Vital Signs (long/unpivoted)
+│   ├── 015_ig_followers.sql   ← APPLIED — meta_organic.fact_ig_followers_daily (loader blocked on token, see MOO-174)
+│   ├── 016_readonly_role.sql  ← APPLIED — rm_readonly Neon role (SELECT allowlist; funraise excluded) for assistant SQL fallback
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
@@ -457,9 +489,15 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── load_q2c_monthly_cume.py
 │   ├── load_q3_monthly_geo.py
 │   ├── load_q4_monthly_device.py
-│   ├── load_funraise_webhook.py
-│   ├── load_funraise_api_pull.py     ← nightly reconciliation
+│   ├── load_funraise_webhook.py      ← real-time gift webhook (maps nested JSON, hashes email)
+│   ├── load_funraise_backfill.py     ← one-time CSV backfill (idempotent on Funraise Id)
+│   ├── load_funraise_subscriptions.py← recurring-plan CSV -> fact_subscriptions
+│   ├── load_funraise_api_pull.py     ← nightly reconciliation (scaffold; API is AWS SigV4)
+│   ├── load_nielsen.py               ← Nielsen Vital Signs CSV (unpivot; station from title)
 │   └── load_finance_monthly.py       ← XLSX upload for revenue/budget
+│
+├── jobs/
+│   └── refresh_funraise_rollup.py    ← nightly dim_supporters rollup (Fly scheduled machine)
 │
 ├── service/                   ← FastAPI on Fly.io
 │   ├── __init__.py
@@ -576,8 +614,10 @@ Never commit secrets. Never paste them in chat without rotating after.
 ### Other sources
 | Source | Loaded | Method | Notes |
 |---|---|---|---|
-| Funraise transactions | [ ] | API pull → backfill | |
-| Funraise supporters | [ ] | API pull | |
+| Funraise transactions | [x] | CSV backfill + webhook | 134,640 txns 2023→2026, reconciled to Funraise |
+| Funraise supporters | [x] | derived + webhook | 14,082; geo + rollup (lifetime/recurring/onetime/active); email hashed |
+| Funraise subscriptions | [x] | CSV | 6,896 plans; 2,726 active, ~$47.5K MRR |
+| Nielsen Vital Signs | [x] | upload page / CLI | RM88 + HYFIN P6+ M-Su loaded; more dayparts/demos accumulate |
 | Meta organic (FB+IG) | [ ] | Coupler | |
 | Meta ads | [ ] | Coupler | |
 | Google Analytics 4 | [ ] | Coupler | |
@@ -592,7 +632,12 @@ Never commit secrets. Never paste them in chat without rotating after.
 
 - [x] Fly.io app `rm-data-loader` deployed (2026-06-09, all 6 WMS routes live)
 - [x] AgentMail inbox + webhook (Triton) configured (signed via Svix)
-- [ ] Funraise webhook configured + verified
+- [x] Funraise webhook configured + verified (real-time gifts; FUNRAISE_* Fly secrets set)
+- [x] Nielsen upload page live — `POST /upload/nielsen` (open, no auth per request)
+- [x] Funraise rollup cron — Fly scheduled machine `funraise-rollup-nightly` (--schedule daily)
+- [x] Metric service **deployed + live** — `GET /api/metric/{id}?brand=&period=&group_by=` (7 metrics; registry in `metrics/`) [MOO-172/175]. NOTE: Dockerfile now `COPY metrics/` — without it the service crashed on import (`No module named 'metrics'`); first deploy carrying the metric layer exposed this.
+- [x] Read-only role `rm_readonly` on Neon (SELECT allowlist; **funraise blocked**; read-only + 15s timeout) [MOO-173]
+- [x] Guarded SQL endpoint **deployed + live** — `POST /api/ask-sql` (single SELECT/WITH, validator + outer LIMIT wrap, runs on `rm_readonly` via Fly secret `DATABASE_URL_RO`) [MOO-173]. Verified in prod: aggregate→200, donor/DDL→400.
 - [ ] Coupler.io importers running (Meta, GA, ESP)
 - [ ] Slack alerting wired for all sources
 - [ ] All Triton scheduled queries enabled (user-side: follow `docs/triton-scheduled-queries-setup.md`)
