@@ -90,3 +90,75 @@ export function sumBy(rows, key, val) {
   for (const r of rows) m[r[key]] = (m[r[key]] || 0) + Number(r[val] || 0)
   return Object.entries(m).map(([k, v]) => ({ [key]: k, [val]: v })).sort((a, b) => b[val] - a[val])
 }
+
+// HourGrid — 7 × 24 heatmap. rows have {dow 0=Sun..6=Sat, hour 0-23, aas}.
+// Colors cells from cream → orange by aas relative to max. No external dependencies.
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+export function HourGrid({ rows }) {
+  if (!rows || !rows.length) {
+    return <div style={{ color: RM.charcoal70, fontSize: 13, padding: '16px 0' }}>No hourly data for this selection.</div>
+  }
+  // Build lookup: grid[dow][hour] = aas
+  const grid = Array.from({ length: 7 }, () => new Array(24).fill(0))
+  let maxAas = 0
+  for (const r of rows) {
+    const d = Number(r.dow), h = Number(r.hour), v = Number(r.aas || 0)
+    if (d >= 0 && d < 7 && h >= 0 && h < 24) {
+      grid[d][h] = v
+      if (v > maxAas) maxAas = v
+    }
+  }
+  const cellW = 28, cellH = 22, rowLabelW = 36
+  const totalW = rowLabelW + 24 * cellW
+  // lerp cream → orange by intensity
+  const lerp = (a, b, t) => Math.round(a + (b - a) * t)
+  const cellColor = (v) => {
+    if (!maxAas) return RM.cream
+    const t = v / maxAas
+    const r = lerp(0xF7, 0xF8, t), g = lerp(0xF1, 0x97, t), bl = lerp(0xDB, 0x1D, t)
+    return `rgb(${r},${g},${bl})`
+  }
+  const hourLabels = Array.from({ length: 24 }, (_, i) => (i % 3 === 0 ? `${i}h` : ''))
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ minWidth: totalW, fontFamily: 'inherit' }}>
+        {/* Hour header */}
+        <div style={{ display: 'flex', marginLeft: rowLabelW }}>
+          {hourLabels.map((lbl, h) => (
+            <div key={h} style={{ width: cellW, fontSize: 10, color: RM.charcoal70, textAlign: 'center', lineHeight: '18px' }}>
+              {lbl}
+            </div>
+          ))}
+        </div>
+        {/* Rows */}
+        {DOW_LABELS.map((dow, d) => (
+          <div key={d} style={{ display: 'flex', alignItems: 'center', marginBottom: 2 }}>
+            <div style={{ width: rowLabelW, fontSize: 11, color: RM.charcoal70, flexShrink: 0 }}>{dow}</div>
+            {grid[d].map((v, h) => (
+              <div
+                key={h}
+                title={`${dow} ${h}:00 — AAS ${v.toFixed(1)}`}
+                style={{
+                  width: cellW - 2, height: cellH, marginRight: 2,
+                  background: cellColor(v),
+                  borderRadius: 3,
+                  flexShrink: 0,
+                }}
+              />
+            ))}
+          </div>
+        ))}
+        {/* Legend */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <span style={{ fontSize: 11, color: RM.charcoal70 }}>Low</span>
+          <div style={{ display: 'flex', gap: 2 }}>
+            {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+              <div key={t} style={{ width: 18, height: 12, background: cellColor(t * maxAas), borderRadius: 2 }} />
+            ))}
+          </div>
+          <span style={{ fontSize: 11, color: RM.charcoal70 }}>High · max {maxAas.toFixed(1)} AAS</span>
+        </div>
+      </div>
+    </div>
+  )
+}

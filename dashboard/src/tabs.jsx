@@ -5,14 +5,14 @@ import {
 } from 'recharts'
 import {
   RM, SERIES, AXIS, GRID, TOOLTIP, money, moneyK, num, pct,
-  Kpi, ChartCard, SectionTitle, pivot, distinct, sumBy,
+  Kpi, ChartCard, SectionTitle, pivot, distinct, sumBy, HourGrid,
 } from './components.jsx'
 import {
   filterByBrand, filterByDate, brandHasChannel, stationLabel, propertyLabel, rangeLabel,
   fromStation, fromGaProperty, fromFbAccount, fromIgAccount, fromEmailList,
 } from './brands.js'
 import { BrandBadge, OrgWideBadge, NoBrandData } from './filters.jsx'
-import { SECTION_INTRO } from './glossary.js'
+import { SECTION_INTRO, GLOSSARY, DECK } from './glossary.js'
 
 const H = 300
 const stationColor = (s) => (s === 'RM88' ? RM.orange : s === 'HYFIN' ? RM.blue : RM.charcoal70)
@@ -375,11 +375,192 @@ function Mailchimp(d, f) {
   )
 }
 
-// ---------- PROGRAM DIRECTOR (stub — widgets added in Task 5) ----------
+// ---------- PROGRAM DIRECTOR ----------
 function ProgramDirector(d, f) {
+  // Step 1: Gate the entire tab on streaming channel
+  if (!brandHasChannel(f.brand, 'streaming')) {
+    return (
+      <>
+        <SectionTitle>Program Director <BrandBadge brand={f.brand} /></SectionTitle>
+        <NoBrandData brand={f.brand} channel="streaming" />
+      </>
+    )
+  }
+
+  // Step 2: Headline KPIs — from tlh_by_station (monthly), pick latest month per station
+  const tlhRows = filterByBrand(d.tlh_by_station || [], f.brand, 'station_code', fromStation)
+  // Get the most recent month's row(s)
+  const latestMonth = tlhRows.reduce((m, r) => (r.month > m ? r.month : m), '')
+  const latestTlh = tlhRows.filter((r) => r.month === latestMonth)
+  const totalTlh = latestTlh.reduce((a, r) => a + Number(r.tlh || 0), 0)
+  const totalAas = latestTlh.reduce((a, r) => a + Number(r.aas || 0), 0)
+  const totalCume = latestTlh.reduce((a, r) => a + Number(r.cume || 0), 0)
+  // TSL: use latest month's tsl_minutes from tsl_trend if available, else from tlh_by_station
+  const tslRows = filterByBrand(d.tsl_trend || [], f.brand, 'station_code', fromStation)
+  const latestTslMonth = tslRows.reduce((m, r) => (r.month > m ? r.month : m), '')
+  const latestTslRows = tslRows.filter((r) => r.month === latestTslMonth)
+  const avgTslMin = latestTslRows.length
+    ? latestTslRows.reduce((a, r) => a + Number(r.tsl_minutes || 0), 0) / latestTslRows.length
+    : null
+  const fmtTsl = (m) => (m == null ? '—' : `${Math.floor(m)}m ${Math.round((m % 1) * 60)}s`)
+
+  // Step 3: Daypart AAS — period-agnostic (intentionally ignores date filter)
+  const daypartRows = filterByBrand(d.daypart_aas || [], f.brand, 'station_code', fromStation)
+  const daypartSorted = [...daypartRows].sort((a, b) => Number(a.daypart_id) - Number(b.daypart_id))
+  const daypartData = sumBy(daypartSorted.map((r) => ({ daypart: r.daypart, aas: r.aas })), 'daypart', 'aas')
+    // restore daypart_id order
+    .sort((a, b) => {
+      const ia = daypartSorted.findIndex((r) => r.daypart === a.daypart)
+      const ib = daypartSorted.findIndex((r) => r.daypart === b.daypart)
+      return ia - ib
+    })
+
+  // Step 4: Hour grid — period-agnostic
+  const hourGridRows = filterByBrand(d.hourly_grid || [], f.brand, 'station_code', fromStation)
+
+  // Step 5: TSL trend — filtered by brand + date
+  const tslTrend = filterByDate(tslRows, 'month', f.range)
+
+  // Step 6: TLH/AAS trend — from tlh_by_station, filtered by brand + date
+  const tlhTrend = filterByDate(tlhRows, 'month', f.range)
+
+  // Step 7: Nielsen — only if brand has nielsen
+  const hasNielsen = brandHasChannel(f.brand, 'nielsen')
+  const nielsenShare = filterByBrand(d.nielsen_share || [], f.brand, 'station_code', fromStation)
+  const nielsenTrend = filterByDate(
+    filterByBrand(d.nielsen_aqh_trend || [], f.brand, 'station_code', fromStation),
+    'period_date', f.range
+  )
+
+  // Step 8: Top web content — only if brand has web
+  const hasWeb = brandHasChannel(f.brand, 'web')
+  const webContent = filterByBrand(d.top_web_content || [], f.brand, 'property', fromGaProperty)
+    .slice(0, 15)
+
   return (
     <>
-      <SectionTitle>{SECTION_INTRO.program_director}</SectionTitle>
+      <SectionTitle>
+        {SECTION_INTRO.program_director} <BrandBadge brand={f.brand} />
+      </SectionTitle>
+
+      {/* Step 2: Headline KPIs */}
+      <div className="grid cols-4">
+        <Kpi label="TLH (latest month)" value={num(totalTlh || null)} accent info={GLOSSARY.tlh}
+          note={latestMonth ? latestMonth.slice(0, 7) : 'No data'} />
+        <Kpi label="AAS (latest month)" value={num(totalAas || null)} info={GLOSSARY.aas}
+          note={latestMonth ? latestMonth.slice(0, 7) : 'No data'} />
+        <Kpi label="CUME (latest month)" value={num(totalCume || null)} info={GLOSSARY.cume}
+          note={latestMonth ? latestMonth.slice(0, 7) : 'No data'} />
+        <Kpi label="Avg TSL (latest month)" value={fmtTsl(avgTslMin)} info={GLOSSARY.tsl}
+          note={latestTslMonth ? latestTslMonth.slice(0, 7) : 'No data'} />
+      </div>
+
+      {/* Step 3: Daypart AAS */}
+      <ChartCard title="Daypart — Average Active Sessions" deck={DECK.daypart_aas}>
+        {daypartData.length === 0 ? (
+          <div className="note-flag">No daypart data for this selection.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={H}>
+            <BarChart data={daypartData} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+              <CartesianGrid {...GRID} vertical={false} />
+              <XAxis dataKey="daypart" {...AXIS} />
+              <YAxis {...AXIS} />
+              <Tooltip {...TOOLTIP} />
+              <Bar dataKey="aas" name="AAS" fill={RM.blue} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        <div className="note-flag">365-day profile — date filter does not apply. Brand filter applies.</div>
+      </ChartCard>
+
+      {/* Step 4: Hourly grid */}
+      <ChartCard title="Hour × Day Listening Grid" deck={DECK.hourly_grid}>
+        <HourGrid rows={hourGridRows} />
+        <div className="note-flag">365-day average profile — date filter does not apply. Brand filter applies.</div>
+      </ChartCard>
+
+      {/* Step 5: TSL trend */}
+      <ChartCard title="Time Spent Listening — Monthly Trend" deck={DECK.tsl_trend}>
+        {tslTrend.length === 0 ? (
+          <div className="note-flag">No TSL trend data for this selection.</div>
+        ) : (
+          <Lines rows={tslTrend} xKey="month" seriesKey="station_code" valKey="tsl_minutes"
+            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
+        )}
+      </ChartCard>
+
+      {/* Step 6: TLH trend */}
+      <ChartCard title="Total Listening Hours — Monthly Trend">
+        {tlhTrend.length === 0 ? (
+          <div className="note-flag">No TLH data for this selection.</div>
+        ) : (
+          <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="tlh"
+            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
+        )}
+      </ChartCard>
+
+      {/* Step 7: Nielsen block */}
+      {hasNielsen && (
+        <>
+          <div className="grid cols-2">
+            {nielsenShare.map((r) => (
+              <Kpi key={r.station_code} label={`${stationLabel(r.station_code)} AQH Share`}
+                value={r.aqh_share} info={GLOSSARY.aqh_share}
+                accent={r.station_code === 'RM88'} note={`Market rank #${r.rank}`} />
+            ))}
+          </div>
+          <div className="grid cols-2">
+            <ChartCard title="Nielsen AQH Share Trend" deck={DECK.aqh_share_trend} info={GLOSSARY.aqh_share}>
+              <Lines rows={nielsenTrend} xKey="period_label" seriesKey="station_code"
+                valKey="aqh_share" x={(p) => p} nameFmt={stationLabel} />
+            </ChartCard>
+            <ChartCard title="Nielsen AQH Share — latest">
+              <ResponsiveContainer width="100%" height={H}>
+                <BarChart layout="vertical" data={nielsenShare} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
+                  <CartesianGrid {...GRID} horizontal={false} />
+                  <XAxis type="number" {...AXIS} />
+                  <YAxis type="category" dataKey="station_code" {...AXIS} width={120} tickFormatter={stationLabel} />
+                  <Tooltip {...TOOLTIP} />
+                  <Bar dataKey="aqh_share" radius={[0, 4, 4, 0]}>
+                    {nielsenShare.map((r) => <Cell key={r.station_code} fill={stationColor(r.station_code)} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+          <div className="note-flag">P6+ demo loaded (Radio Milwaukee = 88Nine FM, HYFIN). Additional demos/dayparts accumulate as reports are uploaded.</div>
+        </>
+      )}
+
+      {/* Step 8: Top web content (omit silently if no web channel) */}
+      {hasWeb && (
+        <ChartCard title="Top Web Content" deck={DECK.top_web_content}>
+          {webContent.length === 0 ? (
+            <div className="note-flag">No web content data for this selection.</div>
+          ) : (
+            <table className="rm">
+              <thead>
+                <tr>
+                  <th>Page</th>
+                  <th className="num">Views</th>
+                  <th className="num">Avg Engagement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {webContent.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.page_path}
+                    </td>
+                    <td className="num">{num(r.views)}</td>
+                    <td className="num">{r.avg_engagement_s != null ? `${Math.round(r.avg_engagement_s)}s` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ChartCard>
+      )}
     </>
   )
 }
