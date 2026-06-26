@@ -829,6 +829,15 @@ function UnderwritingTab(d, f) {
   )
 }
 
+// ---------- DEVELOPMENT (org-wide stub) ----------
+function Development(d, f) {
+  return (
+    <>
+      <SectionTitle>{SECTION_INTRO.development} <OrgWideBadge /></SectionTitle>
+    </>
+  )
+}
+
 // NOTE: Nielsen, Triton, and Mailchimp render functions are kept above and
 // will be reused by ProgramDirector / Underwriting / Social in Tasks 5–6.
 // They are intentionally NOT listed as TABS entries.
@@ -837,6 +846,7 @@ export const TABS = {
   Overview,
   'Program Director': ProgramDirector,
   Underwriting: UnderwritingTab,
+  Development,
   Digital: DigitalReach,
   Social,
   'Finance / Exec': Financial,
