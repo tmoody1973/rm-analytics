@@ -100,7 +100,7 @@ function Financial(d, f) {
   const last = rvb[rvb.length - 1] || {}
   return (
     <>
-      <SectionTitle>Financial Performance · FY2026 YTD <OrgWideBadge /></SectionTitle>
+      <SectionTitle>{SECTION_INTRO.finance} <OrgWideBadge /></SectionTitle>
       <div className="grid cols-4">
         <Kpi label="Revenue YTD" value={money(last.revenue_ytd)} accent />
         <Kpi label="Budget YTD" value={money(last.budget_ytd)} />
@@ -108,7 +108,7 @@ function Financial(d, f) {
         <Kpi label="Individual + Underwriting" value={money((latestMix.individual || 0) + (latestMix.underwriting || 0))} />
       </div>
       <div className="grid cols-2">
-        <ChartCard title="Revenue vs. Budget (YTD)">
+        <ChartCard title="Revenue vs. Budget (YTD)" deck={DECK.revenue_vs_budget}>
           <ResponsiveContainer width="100%" height={H}>
             <BarChart data={rvb} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
               <CartesianGrid {...GRID} vertical={false} />
@@ -149,15 +149,16 @@ function DigitalReach(d, f) {
   const avgWeek = byWeek.length ? Math.round(totalSessions / byWeek.length) : null
   return (
     <>
-      <SectionTitle>Digital Reach · Website <BrandBadge brand={f.brand} /></SectionTitle>
+      <SectionTitle>{SECTION_INTRO.digital} <BrandBadge brand={f.brand} /></SectionTitle>
       <div className="grid cols-4">
         <Kpi label={`Web Sessions · ${rangeLabel(f.range)}`} value={hasWeb ? num(totalSessions) : '—'} accent
+          info={GLOSSARY.organic_traffic}
           note={hasWeb ? 'For the selected brand + period' : 'Not measured for this brand'} />
         <Kpi label="Avg / week" value={hasWeb ? num(avgWeek) : '—'} note="Selected period" />
         <Kpi label="Latest week" value={hasWeb ? num(latestWeek) : '—'} note="Most recent week" />
         <Kpi label="Org Web Sessions · 30d" value={num(reach.web_sessions_30d)} note="GA4 · org-wide" />
       </div>
-      <ChartCard title="Website Sessions (weekly)">
+      <ChartCard title="Website Sessions (weekly)" deck={DECK.top_web_content}>
         {!hasWeb ? <NoBrandData brand={f.brand} channel="web" />
           : <Lines rows={web} xKey="week" seriesKey="property" valKey="sessions" x={(w) => w?.slice(5)} nameFmt={propertyLabel} />}
       </ChartCard>
@@ -177,32 +178,56 @@ const sum = (arr) => arr.reduce((a, b) => a + b, 0)
 function Social(d, f) {
   const hasFb = brandHasChannel(f.brand, 'fb')
   const hasIg = brandHasChannel(f.brand, 'ig')
+  const hasEmail = brandHasChannel(f.brand, 'email')
+
+  // Email (Mailchimp) data
+  const campsAll = filterByDate(filterByBrand(d.email_campaigns, f.brand, 'list_name', fromEmailList), 'sent', f.range)
+  const camps = campsAll.slice(0, 12)
+  const lists = filterByBrand(d.email_lists || [], f.brand, 'list_name', fromEmailList)
+  const members = lists.reduce((a, r) => a + Number(r.members || 0), 0)
+  const emailsSent = campsAll.reduce((a, r) => a + Number(r.emails_sent || 0), 0)
+  const openWeighted = emailsSent
+    ? campsAll.reduce((a, r) => a + Number(r.open_rate || 0) * Number(r.emails_sent || 0), 0) / emailsSent
+    : null
+
   if (!hasFb && !hasIg) {
     return (
       <>
-        <SectionTitle>Social — Facebook + Instagram <BrandBadge brand={f.brand} /></SectionTitle>
+        <SectionTitle>{SECTION_INTRO.social} <BrandBadge brand={f.brand} /></SectionTitle>
         <NoBrandData brand={f.brand} channel="social" />
+        {hasEmail && (
+          <>
+            <SectionTitle>Email Marketing — Mailchimp <BrandBadge brand={f.brand} /></SectionTitle>
+            <div className="grid cols-4">
+              <Kpi label="List Members" value={num(members)} accent note="Current subscribers" />
+              <Kpi label={`Emails Sent · ${rangeLabel(f.range)}`} value={num(emailsSent)} note="Across campaigns" />
+              <Kpi label="Avg Open Rate" value={pct(openWeighted)} info={GLOSSARY.open_click_rate} note="Weighted by volume" />
+              <Kpi label="Campaigns" value={num(campsAll.length)} note="In selected period" />
+            </div>
+          </>
+        )}
       </>
     )
   }
+
   const fbRows = filterByDate(filterByBrand(d.social_followers, f.brand, 'account', fromFbAccount), 'date', f.range)
   const fb = sumBy(fbRows, 'date', 'followers').sort((a, b) => a.date.localeCompare(b.date))
   const ig = filterByDate(filterByBrand(d.social_ig_monthly, f.brand, 'account', fromIgAccount), 'month', f.range)
   return (
     <>
-      <SectionTitle>Social — Facebook + Instagram <BrandBadge brand={f.brand} /></SectionTitle>
+      <SectionTitle>{SECTION_INTRO.social} <BrandBadge brand={f.brand} /></SectionTitle>
       <div className="grid cols-4">
         <Kpi label="Facebook Followers" value={num((fb.at(-1) || {}).followers)} accent note="Latest" />
-        <Kpi label="Instagram Reach" value={num(igLatest(ig, 'reach'))} note="Latest month · unique people" />
+        <Kpi label="Instagram Reach" value={num(igLatest(ig, 'reach'))} info={GLOSSARY.reach} note="Latest month · unique people" />
         <Kpi label="Instagram Engagement" value={num(igLatest(ig, 'engagements'))} note="Latest month" />
         <Kpi label="IG Accounts Engaged" value={num(igLatest(ig, 'accounts_engaged'))} note="Latest month" />
       </div>
       <div className="grid cols-2">
-        <ChartCard title="Instagram Reach (monthly)">
+        <ChartCard title="Instagram Reach (monthly)" info={GLOSSARY.reach}>
           {!hasIg ? <NoBrandData brand={f.brand} channel="Instagram" />
             : <Lines rows={ig} xKey="month" seriesKey="account" valKey="reach" x={(m) => m?.slice(0, 7)} />}
         </ChartCard>
-        <ChartCard title="Instagram Engagement (monthly)">
+        <ChartCard title="Instagram Engagement (monthly)" info={GLOSSARY.impressions}>
           {!hasIg ? <NoBrandData brand={f.brand} channel="Instagram" />
             : <Lines rows={ig} xKey="month" seriesKey="account" valKey="engagements" x={(m) => m?.slice(0, 7)} />}
         </ChartCard>
@@ -221,6 +246,42 @@ function Social(d, f) {
         )}
       </ChartCard>
       <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected.</div>
+
+      {/* Email — Mailchimp widgets folded into the Social tab */}
+      <SectionTitle>Email Marketing — Mailchimp <BrandBadge brand={f.brand} /></SectionTitle>
+      {!hasEmail ? <NoBrandData brand={f.brand} channel="email" /> : (
+        <>
+          <div className="grid cols-4">
+            <Kpi label="List Members" value={num(members)} accent note="Current subscribers" />
+            <Kpi label={`Emails Sent · ${rangeLabel(f.range)}`} value={num(emailsSent)} note="Across campaigns" />
+            <Kpi label="Avg Open Rate" value={pct(openWeighted)} info={GLOSSARY.open_click_rate} note="Weighted by volume" />
+            <Kpi label="Campaigns" value={num(campsAll.length)} note="In selected period" />
+          </div>
+          <ChartCard title="Open rate by campaign (recent)">
+            <ResponsiveContainer width="100%" height={H}>
+              <BarChart data={[...camps].reverse()} margin={{ top: 8, right: 16, bottom: 60, left: 4 }}>
+                <CartesianGrid {...GRID} vertical={false} />
+                <XAxis dataKey="campaign_title" {...AXIS} angle={-35} textAnchor="end" interval={0} height={70}
+                  tickFormatter={(t) => (t || '').slice(0, 18)} />
+                <YAxis {...AXIS} tickFormatter={(v) => pct(v)} />
+                <Tooltip {...TOOLTIP} formatter={(v) => pct(v)} />
+                <Bar dataKey="open_rate" fill={RM.orange} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+          <ChartCard title="Recent campaigns">
+            <table className="rm">
+              <thead><tr><th>Campaign</th><th>List</th><th>Sent</th><th className="num">Emails</th><th className="num">Open</th><th className="num">Click</th></tr></thead>
+              <tbody>
+                {camps.map((c, i) => (
+                  <tr key={i}><td>{c.campaign_title}</td><td>{c.list_name}</td><td>{c.sent}</td><td className="num">{num(c.emails_sent)}</td>
+                    <td className="num">{pct(c.open_rate)}</td><td className="num">{pct(c.click_rate)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </ChartCard>
+        </>
+      )}
     </>
   )
 }
