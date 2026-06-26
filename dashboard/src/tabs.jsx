@@ -285,7 +285,7 @@ function Overview(d, f) {
               {nielsenShareRows.map((r) => (
                 <Kpi key={r.station_code}
                   label={`${stationLabel(r.station_code)} AQH Share`}
-                  value={r.aqh_share}
+                  value={pct(r.aqh_share)}
                   accent={r.station_code === 'RM88'}
                   info={GLOSSARY.aqh_share}
                   note={r.rank ? `Market rank #${r.rank} · ${GLOSSARY.market_rank.split('.')[0]}` : undefined} />
