@@ -56,6 +56,17 @@ SET account_name    = EXCLUDED.account_name,
 def _token() -> str:
     token = os.environ.get("META_ACCESS_TOKEN")
     if not token:
+        # Local runs keep the token in ~/.radio-milwaukee/.env; on Fly it's a real
+        # env secret. Load the dotenv file before giving up (mirrors _common's DB path).
+        from pathlib import Path
+
+        from dotenv import load_dotenv
+
+        env_path = Path.home() / ".radio-milwaukee" / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            token = os.environ.get("META_ACCESS_TOKEN")
+    if not token:
         raise RuntimeError("META_ACCESS_TOKEN not set (env or Fly secret)")
     return token
 
