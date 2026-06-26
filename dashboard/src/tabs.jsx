@@ -489,12 +489,30 @@ function ProgramDirector(d, f) {
         )}
       </ChartCard>
 
-      {/* Step 6: TLH trend */}
+      {/* Step 6: TLH/AAS/CUME trends */}
       <ChartCard title="Total Listening Hours — Monthly Trend">
         {tlhTrend.length === 0 ? (
           <div className="note-flag">No TLH data for this selection.</div>
         ) : (
           <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="tlh"
+            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
+        )}
+      </ChartCard>
+
+      <ChartCard title="Average Active Sessions — Monthly Trend" info={GLOSSARY.aas}>
+        {tlhTrend.length === 0 ? (
+          <div className="note-flag">No AAS data for this selection.</div>
+        ) : (
+          <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="aas"
+            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
+        )}
+      </ChartCard>
+
+      <ChartCard title="Cume — Monthly Trend" info={GLOSSARY.cume}>
+        {tlhTrend.length === 0 ? (
+          <div className="note-flag">No CUME data for this selection.</div>
+        ) : (
+          <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="cume"
             x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
         )}
       </ChartCard>

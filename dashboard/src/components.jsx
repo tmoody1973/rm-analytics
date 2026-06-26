@@ -98,14 +98,19 @@ export function HourGrid({ rows }) {
   if (!rows || !rows.length) {
     return <div style={{ color: RM.charcoal70, fontSize: 13, padding: '16px 0' }}>No hourly data for this selection.</div>
   }
-  // Build lookup: grid[dow][hour] = aas
+  // Build lookup: grid[dow][hour] = sum of aas across all stations (ALL-mode)
   const grid = Array.from({ length: 7 }, () => new Array(24).fill(0))
-  let maxAas = 0
   for (const r of rows) {
     const d = Number(r.dow), h = Number(r.hour), v = Number(r.aas || 0)
     if (d >= 0 && d < 7 && h >= 0 && h < 24) {
-      grid[d][h] = v
-      if (v > maxAas) maxAas = v
+      grid[d][h] += v
+    }
+  }
+  // Compute max after all stations have been accumulated
+  let maxAas = 0
+  for (let d = 0; d < 7; d++) {
+    for (let h = 0; h < 24; h++) {
+      if (grid[d][h] > maxAas) maxAas = grid[d][h]
     }
   }
   const cellW = 28, cellH = 22, rowLabelW = 36
