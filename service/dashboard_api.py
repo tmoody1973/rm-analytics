@@ -77,7 +77,7 @@ QUERIES: dict[str, str] = {
         ORDER BY period_date, station_code
     """,
     "tlh_by_station": """
-        SELECT station_code, month_start::text AS month, round(tlh) AS tlh, round(aas,1) AS aas
+        SELECT station_code, month_start::text AS month, round(tlh) AS tlh, round(aas,1) AS aas, round(cume) AS cume
         FROM wms.fact_monthly_cume ORDER BY month_start, station_code
     """,
     "platform_breakdown": """

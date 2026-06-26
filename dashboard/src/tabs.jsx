@@ -158,7 +158,7 @@ function DigitalReach(d, f) {
         <Kpi label="Latest week" value={hasWeb ? num(latestWeek) : '—'} note="Most recent week" />
         <Kpi label="Org Web Sessions · 30d" value={num(reach.web_sessions_30d)} note="GA4 · org-wide" />
       </div>
-      <ChartCard title="Website Sessions (weekly)" deck={DECK.top_web_content}>
+      <ChartCard title="Website Sessions (weekly)">
         {!hasWeb ? <NoBrandData brand={f.brand} channel="web" />
           : <Lines rows={web} xKey="week" seriesKey="property" valKey="sessions" x={(w) => w?.slice(5)} nameFmt={propertyLabel} />}
       </ChartCard>
@@ -598,9 +598,9 @@ function ProgramDirector(d, f) {
             ))}
           </div>
           <div className="grid cols-2">
-            <ChartCard title="Nielsen AQH Share Trend" deck={DECK.aqh_share_trend} info={GLOSSARY.aqh_share}>
+            <ChartCard title="Nielsen AQH Persons — Trend" info={GLOSSARY.aqh_persons}>
               <Lines rows={nielsenTrend} xKey="period_label" seriesKey="station_code"
-                valKey="aqh_share" x={(p) => p} nameFmt={stationLabel} />
+                valKey="aqh_persons" x={(p) => p} nameFmt={stationLabel} />
             </ChartCard>
             <ChartCard title="Nielsen AQH Share — latest">
               <ResponsiveContainer width="100%" height={H}>
