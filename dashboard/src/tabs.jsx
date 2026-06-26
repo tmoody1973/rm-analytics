@@ -119,6 +119,11 @@ function Overview(d, f) {
   }
   const totalFollowers = Object.values(latestFollowersByAccount).reduce((a, r) => a + Number(r.followers || 0), 0)
 
+  // Instagram followers: latest snapshot per account (ig_followers is already a single
+  // latest-day snapshot from fact_ig_followers_daily), summed for the brand.
+  const igFollowersRows = filterByBrand(d.ig_followers || [], f.brand, 'account_name', fromIgAccount)
+  const totalIgFollowers = igFollowersRows.reduce((a, r) => a + Number(r.followers_count || 0), 0)
+
   // Web sessions: latest week total
   const webWeeklyAll = filterByBrand(d.web_sessions_weekly || [], f.brand, 'property', fromGaProperty)
   const latestWebWeek = webWeeklyAll.reduce((m, r) => (r.week > m ? r.week : m), '')
@@ -176,10 +181,17 @@ function Overview(d, f) {
               note="Latest month · digital streams" />
           ) : null}
 
-          {/* Social following */}
-          <Kpi label="Social Followers"
+          {/* Social following — Facebook */}
+          <Kpi label="Facebook Followers"
             value={num(totalFollowers || null)}
             note="Latest · Facebook" />
+
+          {/* Social following — Instagram */}
+          {totalIgFollowers > 0 ? (
+            <Kpi label="Instagram Followers"
+              value={num(totalIgFollowers)}
+              note="Latest · Instagram" />
+          ) : null}
 
           {/* Web sessions — latest week */}
           {hasWeb ? (

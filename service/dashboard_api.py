@@ -121,6 +121,12 @@ QUERIES: dict[str, str] = {
         FROM meta_organic.stg_fb_page_daily WHERE engagement__lifetime_followers IS NOT NULL
         GROUP BY report__date, account__account_name ORDER BY report__date
     """,
+    "ig_followers": """
+        SELECT account_name, followers_count
+        FROM meta_organic.fact_ig_followers_daily
+        WHERE snapshot_date=(SELECT max(snapshot_date) FROM meta_organic.fact_ig_followers_daily)
+        ORDER BY followers_count DESC
+    """,
     "social_ig_monthly": """
         SELECT account__account_name AS account, report__end_date::text AS month,
                performance__reach AS reach, performance__engagements AS engagements,

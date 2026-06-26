@@ -40,3 +40,16 @@ def test_nielsen_cume_trend_shape():
     assert "period_label" in r, "nielsen_cume_trend row missing period_label"
     assert "period_date" in r, "nielsen_cume_trend row missing period_date"
     assert "cume" in r, "nielsen_cume_trend row missing cume"
+
+
+def test_ig_followers_present_and_shape():
+    p = _payload()
+    assert "ig_followers" in p, "missing payload key: ig_followers"
+    rows = p["ig_followers"]
+    assert rows, "ig_followers is empty (loader may not have run / table empty)"
+    r = rows[0]
+    assert "account_name" in r, "ig_followers row missing account_name"
+    assert "followers_count" in r, "ig_followers row missing followers_count"
+    assert isinstance(r["followers_count"], (int, float)), (
+        f"ig_followers.followers_count is not numeric: {type(r['followers_count'])}"
+    )
