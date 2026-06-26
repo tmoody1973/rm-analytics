@@ -168,6 +168,72 @@ QUERIES: dict[str, str] = {
         ORDER BY views DESC
         LIMIT 50
     """,
+    # ── Development Director tab — Funraise donor queries ──────────────────
+    "donor_retention_trend": """
+        WITH gifts AS (
+          SELECT supporter_id, extract(year FROM transaction_date)::int AS yr
+          FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1,2),
+        first_yr AS (SELECT supporter_id, min(yr) AS fy FROM gifts GROUP BY 1)
+        SELECT g.yr AS prior_year,
+               CASE WHEN g.yr = f.fy THEN 'first_year' ELSE 'repeat' END AS cohort,
+               count(DISTINCT g.supporter_id) AS donors,
+               round(100.0*count(DISTINCT g2.supporter_id)/NULLIF(count(DISTINCT g.supporter_id),0),1) AS retention_pct
+        FROM gifts g JOIN first_yr f USING (supporter_id)
+        LEFT JOIN gifts g2 ON g2.supporter_id=g.supporter_id AND g2.yr=g.yr+1
+        GROUP BY g.yr, cohort ORDER BY g.yr, cohort
+    """,
+    "donor_status_trend": """
+        WITH first_gift AS (
+          SELECT supporter_id, min(transaction_date) AS fg
+          FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1),
+        monthly AS (
+          SELECT DISTINCT supporter_id, date_trunc('month',transaction_date)::date AS m
+          FROM funraise.fact_transactions WHERE status='Complete')
+        SELECT m.m AS month,
+               count(*) FILTER (WHERE date_trunc('month',f.fg)=m.m) AS new_donors,
+               count(*) FILTER (WHERE date_trunc('month',f.fg)<m.m) AS returning_donors
+        FROM monthly m JOIN first_gift f USING (supporter_id)
+        GROUP BY m.m ORDER BY m.m
+    """,
+    "sustainer_flow": """
+        WITH adds AS (
+          SELECT date_trunc('month',started_at)::date AS m, count(*) AS added
+          FROM funraise.fact_subscriptions WHERE started_at IS NOT NULL GROUP BY 1),
+        churn AS (
+          SELECT date_trunc('month',canceled_at)::date AS m, count(*) AS churned
+          FROM funraise.fact_subscriptions WHERE canceled_at IS NOT NULL AND status='Cancelled' GROUP BY 1)
+        SELECT coalesce(a.m,c.m) AS month, coalesce(a.added,0) AS added, coalesce(c.churned,0) AS churned
+        FROM adds a FULL OUTER JOIN churn c ON a.m=c.m ORDER BY month
+    """,
+    "ltv_tiers": """
+        SELECT CASE WHEN lifetime_total<100 THEN '<$100'
+                    WHEN lifetime_total<500 THEN '$100-499'
+                    WHEN lifetime_total<1000 THEN '$500-999'
+                    WHEN lifetime_total<5000 THEN '$1K-4,999'
+                    ELSE '$5K+' END AS tier,
+               count(*) AS donors, round(sum(lifetime_total)) AS total
+        FROM funraise.dim_supporters WHERE lifetime_total>0
+        GROUP BY tier ORDER BY min(lifetime_total)
+    """,
+    "payment_method_mix": """
+        SELECT coalesce(nullif(payment_method,''),'Unknown') AS method,
+               count(*) AS gifts, round(sum(amount)) AS total
+        FROM funraise.fact_transactions
+        WHERE status='Complete' AND coalesce(refunded,false)=false
+        GROUP BY method ORDER BY total DESC
+    """,
+    "donor_geo_state": """
+        SELECT coalesce(nullif(state,''),'Unknown') AS state,
+               count(*) AS donors, round(sum(lifetime_total)) AS lifetime
+        FROM funraise.dim_supporters WHERE lifetime_total>0
+        GROUP BY state ORDER BY donors DESC LIMIT 15
+    """,
+    "donor_geo_zip": """
+        SELECT coalesce(nullif(postal_code,''),'Unknown') AS zip,
+               count(*) AS donors, round(sum(lifetime_total)) AS lifetime
+        FROM funraise.dim_supporters WHERE lifetime_total>0
+        GROUP BY zip ORDER BY donors DESC LIMIT 15
+    """,
 }
 
 
