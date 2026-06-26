@@ -16,6 +16,11 @@ from psycopg.rows import dict_row
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "loaders"))
 from _common import get_db_connection  # noqa: E402
 
+# Headline KPIs are defined once in the metric registry. Dashboard pulls them
+# from there so there is ONE definition per metric (no duplicate SQL).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from metrics.registry import run_metric  # noqa: E402
+
 # name -> SQL. Each returns rows the frontend renders directly.
 QUERIES: dict[str, str] = {
     "header": """
@@ -28,13 +33,9 @@ QUERIES: dict[str, str] = {
           (SELECT max(engagement__lifetime_followers) FROM meta_organic.stg_fb_page_daily) AS fb_followers,
           (SELECT coalesce(sum(stats_member_count),0) FROM email_esp.stg_lists) AS email_subscribers
     """,
-    "exec_kpis": """
-        SELECT
-          (SELECT count(*) FROM funraise.dim_supporters WHERE active_12mo) AS active_donors,
-          (SELECT count(*) FROM funraise.fact_subscriptions WHERE status='Active') AS active_sustainers,
-          (SELECT round(sum(amount)) FROM funraise.fact_subscriptions WHERE status='Active' AND frequency='Monthly') AS sustainer_mrr,
-          (SELECT round(sum(amount)) FROM funraise.fact_transactions WHERE status='Complete' AND transaction_date >= current_date - interval '12 months') AS revenue_12mo
-    """,
+    # exec_kpis is intentionally absent from QUERIES. The four headline KPIs
+    # (active_donors, active_sustainers, sustainer_mrr, revenue_12mo) are now
+    # fetched from the metric registry in dashboard_data() below. One definition.
     "revenue_trend": """
         SELECT date_trunc('month', transaction_date)::date::text AS month, round(sum(amount)) AS revenue
         FROM funraise.fact_transactions WHERE status='Complete' GROUP BY 1 ORDER BY 1
@@ -178,6 +179,26 @@ def _jsonable(v: object):
     return v
 
 
+def _exec_kpis_from_registry() -> list[dict]:
+    """Fetch the four headline KPIs from the metric registry (single source of truth).
+
+    Period note: revenue_12mo uses the registry's 12m period (365-day rolling
+    window from Python, i.e. today - 365 days). The previous bespoke SQL used
+    PostgreSQL's `interval '12 months'` (calendar-month subtraction). These
+    differ by at most one day in leap years; registry semantics are preferred per
+    the architecture decision to avoid duplicate SQL.
+    """
+    return [
+        {
+            "active_donors": run_metric("active_donors")["data"][0]["value"],
+            "active_sustainers": run_metric("active_sustainers")["data"][0]["value"],
+            "sustainer_mrr": run_metric("sustainer_mrr")["data"][0]["value"],
+            # registry period="12m" = today - 365 days (see metrics/filters.py)
+            "revenue_12mo": run_metric("revenue", period="12m")["data"][0]["value"],
+        }
+    ]
+
+
 def dashboard_data() -> dict:
     conn = get_db_connection()
     out: dict[str, list[dict]] = {}
@@ -188,4 +209,6 @@ def dashboard_data() -> dict:
                 out[name] = [{k: _jsonable(v) for k, v in row.items()} for row in cur.fetchall()]
     finally:
         conn.close()
+    # Headline KPIs via registry (one definition — no duplicate SQL).
+    out["exec_kpis"] = _exec_kpis_from_registry()
     return out
