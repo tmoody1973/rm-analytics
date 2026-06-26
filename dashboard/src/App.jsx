@@ -44,9 +44,9 @@ export default function App() {
         ))}
       </nav>
 
-      {tab !== 'Overview' && (
-        <FilterBar brand={brand} range={range} onBrand={setBrand} onRange={setRange} />
-      )}
+      {/* Board (Overview) brand-filters its per-station reach/market cards too, so the
+          filter bar shows on every tab; org-wide cards carry an OrgWideBadge and ignore it. */}
+      <FilterBar brand={brand} range={range} onBrand={setBrand} onRange={setRange} />
 
       <main>
         {err ? <div className="loading">Couldn't load data: {err}</div>

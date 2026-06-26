@@ -76,6 +76,19 @@ QUERIES: dict[str, str] = {
         WHERE section='Estimates' AND metric='AQH Persons' AND period_date IS NOT NULL
         ORDER BY period_date, station_code
     """,
+    "nielsen_cume": """
+        SELECT station_code, value_numeric AS cume
+        FROM nielsen.fact_vital_signs
+        WHERE section='Estimates' AND metric='Avg Weekly Cume Persons'
+          AND period_date=(SELECT max(period_date) FROM nielsen.fact_vital_signs WHERE metric='Avg Weekly Cume Persons')
+        ORDER BY cume DESC
+    """,
+    "nielsen_cume_trend": """
+        SELECT station_code, period_label, period_date::text AS period_date, value_numeric AS cume
+        FROM nielsen.fact_vital_signs
+        WHERE section='Estimates' AND metric='Avg Weekly Cume Persons' AND period_date IS NOT NULL
+        ORDER BY period_date, station_code
+    """,
     "tlh_by_station": """
         SELECT station_code, month_start::text AS month, round(tlh) AS tlh, round(aas,1) AS aas, round(cume) AS cume
         FROM wms.fact_monthly_cume ORDER BY month_start, station_code
@@ -107,6 +120,12 @@ QUERIES: dict[str, str] = {
                max(engagement__lifetime_followers) AS followers
         FROM meta_organic.stg_fb_page_daily WHERE engagement__lifetime_followers IS NOT NULL
         GROUP BY report__date, account__account_name ORDER BY report__date
+    """,
+    "ig_followers": """
+        SELECT account_name, followers_count
+        FROM meta_organic.fact_ig_followers_daily
+        WHERE snapshot_date=(SELECT max(snapshot_date) FROM meta_organic.fact_ig_followers_daily)
+        ORDER BY followers_count DESC
     """,
     "social_ig_monthly": """
         SELECT account__account_name AS account, report__end_date::text AS month,

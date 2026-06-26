@@ -21,6 +21,10 @@ export const GLOSSARY = {
   lapsed_donor: "Someone who gave before but hasn't given in the last 12 months.",
   new_donor: "Someone whose first gift to us landed in this period.",
   payment_method: "How gifts come in — credit card, ACH bank transfer, check, and so on. ACH costs us less and tends to stick.",
+  weekly_cume: "How many different people tune in to our broadcast signal at least once in a week — our on-air reach, not how long they stay.",
+  aqh_vs_cume: "Cume counts different people reached; AQH is how many are listening in an average quarter-hour. Reach versus intensity.",
+  market_rank: "Where our AQH share ranks against every station Nielsen measures in metro Milwaukee.",
+  pct_to_budget: "How our revenue so far this year compares to the plan — over 100% is ahead of budget.",
 };
 
 export const SECTION_INTRO = {
@@ -30,6 +34,7 @@ export const SECTION_INTRO = {
   social: "How each brand's audience is growing and engaging, page by page.",
   finance: "The money: what we've raised against budget, where it comes from, and what's left over.",
   development: "The health of our supporter base: how many give, whether they come back, and what they're worth over time. Org-wide — the brand filter doesn't apply here.",
+  board: "How the whole organization is doing — the people we reach, the money against plan, the health of our giving, and where we stand in the market. Org-wide; some cards narrow by brand.",
 };
 
 export const DECK = {
@@ -48,4 +53,8 @@ export const DECK = {
   ltv_tiers: "Where our lifetime giving concentrates — and how few donors hold most of it.",
   payment_mix: "How gifts reach us, by method and dollars.",
   donor_geo: "Where our supporters are.",
+  board_reach: "The people we touch across broadcast, streaming, social, and web. Each source is counted separately — we can't de-duplicate a person across them.",
+  board_revenue: "Where revenue stands against the fiscal-year plan.",
+  board_donors: "The health of our supporter base at a glance.",
+  board_market: "Our standing in metro Milwaukee's radio market.",
 };
