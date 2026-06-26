@@ -3,5 +3,8 @@
     "api/copilotkit.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/api/copilotkit/:path*", "destination": "/api/copilotkit" }
+  ]
 }
