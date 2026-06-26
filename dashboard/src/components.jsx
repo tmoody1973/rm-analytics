@@ -21,10 +21,22 @@ export const TOOLTIP = {
   labelStyle: { color: RM.cream60 }, itemStyle: { color: RM.cream },
 }
 
-export function Kpi({ label, value, note, accent }) {
+// Small accessible info tooltip — CSS-only popover, no dependency.
+function InfoDot({ text }) {
+  return (
+    <span className="info-dot" tabIndex={0} role="img" aria-label={text}>
+      ⓘ<span className="info-pop">{text}</span>
+    </span>
+  )
+}
+
+export function Kpi({ label, value, note, accent, info }) {
   return (
     <div className="card kpi">
-      <div className="label">{label}</div>
+      <div className="label">
+        {label}
+        {info ? <InfoDot text={info} /> : null}
+      </div>
       <div className={'value' + (accent ? ' accent' : '')}>{value}</div>
       {note && <div className="note">{note}</div>}
     </div>
@@ -41,10 +53,13 @@ export function HeaderKpi({ label, value, note }) {
   )
 }
 
-export function ChartCard({ title, children, className = '' }) {
+export function ChartCard({ title, children, className = '', deck, info }) {
   return (
     <div className={'card chart-card ' + className}>
-      <h3>{title}</h3>
+      <div className="card-head">
+        <h3>{title}{info ? <InfoDot text={info} /> : null}</h3>
+        {deck ? <p className="deck">{deck}</p> : null}
+      </div>
       {children}
     </div>
   )
