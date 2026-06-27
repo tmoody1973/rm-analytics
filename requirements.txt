@@ -7,3 +7,4 @@ python-dotenv==1.0.1
 requests==2.32.3
 python-multipart==0.0.12
 svix==1.95.2
+anthropic==0.69.0

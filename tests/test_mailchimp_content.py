@@ -29,3 +29,39 @@ def test_parse_content_extracts_links_and_word_count():
 def test_parse_content_handles_missing_body():
     out = mc.parse_content(None, None)
     assert out == {"plain_text": "", "html": None, "links": [], "word_count": 0}
+
+
+import _enrich as en
+
+
+def test_validate_drops_out_of_vocab_topics_and_dedups():
+    raw = {"primary_theme": "events", "topics": ["events", "events", "made_up", "podcasts"],
+           "content_type": "event_promo", "featured_artists": ["GGOOLD", "  Klassik  "]}
+    out = en.validate_enrichment(raw)
+    assert out["topics"] == ["events", "podcasts"]
+    assert out["primary_theme"] == "events"
+    assert out["content_type"] == "event_promo"
+    assert out["featured_artists"] == ["GGOOLD", "Klassik"]
+
+
+def test_validate_nulls_invalid_scalars():
+    out = en.validate_enrichment({"primary_theme": "nope", "topics": "notalist",
+                                  "content_type": "bogus", "featured_artists": None})
+    assert out == {"primary_theme": None, "topics": [], "content_type": None, "featured_artists": []}
+
+
+def test_enrich_text_uses_injected_client_and_validates():
+    class FakeBlock:
+        type = "tool_use"
+        input = {"primary_theme": "local_music", "topics": ["local_music", "junk"],
+                 "content_type": "newsletter", "featured_artists": ["Foo"]}
+    class FakeResp:
+        content = [FakeBlock()]
+    class FakeClient:
+        def __init__(self): self.messages = self
+        def create(self, **kw):
+            assert kw["tool_choice"]["name"] == "record_enrichment"
+            return FakeResp()
+    out = en.enrich_text(FakeClient(), "some newsletter body", model="claude-haiku-4-5-20251001")
+    assert out["content_type"] == "newsletter"
+    assert out["topics"] == ["local_music"]   # 'junk' dropped
