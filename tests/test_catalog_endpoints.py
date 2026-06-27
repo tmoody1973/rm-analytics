@@ -127,30 +127,33 @@ class TestGetSchema:
         assert "nielsen" in schemas, f"nielsen not found in schemas: {schemas}"
 
     @pytest.mark.skipif(not _db_available(), reason="DATABASE_URL not set")
-    def test_funraise_schema_absent(self):
-        """CRITICAL: funraise (donor PII) must NEVER appear in the schema catalog."""
+    def test_funraise_schema_present(self):
+        """funraise (de-identified donor data) is now exposed so the assistant
+        can query it. The endpoint is gated behind INTERNAL_API_TOKEN."""
         r = client.get("/api/schema")
-        body = r.json()
-        funraise_entries = [e for e in body if e.get("schema") == "funraise"]
-        assert not funraise_entries, (
-            f"funraise schema leaked into /api/schema: {funraise_entries}"
-        )
+        schemas = {e["schema"] for e in r.json()}
+        assert "funraise" in schemas, f"funraise not found in schemas: {schemas}"
 
     @pytest.mark.skipif(not _db_available(), reason="DATABASE_URL not set")
-    def test_funraise_absent_in_any_field(self):
-        """Paranoia check: 'funraise' must not appear anywhere in the response."""
+    def test_funraise_pii_columns_not_value_enumerated(self):
+        """CRITICAL: funraise tables may appear, but PII-adjacent column VALUES
+        (email hash, city, postal, state, address) must never be enumerated."""
         r = client.get("/api/schema")
-        import json
-        raw = json.dumps(r.json()).lower()
-        assert "funraise" not in raw, (
-            "The word 'funraise' appeared somewhere in /api/schema response"
-        )
+        pii_bits = ("email", "city", "postal", "zip", "address", "state", "phone")
+        for entry in r.json():
+            if entry["schema"] != "funraise":
+                continue
+            for col in entry["columns"]:
+                if any(bit in col["name"].lower() for bit in pii_bits):
+                    assert "values" not in col, (
+                        f"funraise.{entry['table']}.{col['name']} enumerated PII values"
+                    )
 
-    def test_schema_catalog_excludes_funraise_from_allowed_set(self):
-        """Unit-level guard: catalog_api._ALLOWED_SCHEMAS must not include funraise."""
+    def test_schema_catalog_includes_funraise_in_allowed_set(self):
+        """Unit-level guard: catalog_api._ALLOWED_SCHEMAS now includes funraise."""
         from service.catalog_api import _ALLOWED_SCHEMAS
-        assert "funraise" not in _ALLOWED_SCHEMAS, (
-            "funraise must not appear in _ALLOWED_SCHEMAS"
+        assert "funraise" in _ALLOWED_SCHEMAS, (
+            "funraise must be in _ALLOWED_SCHEMAS for the assistant to query it"
         )
 
     @pytest.mark.skipif(not _db_available(), reason="DATABASE_URL not set")
@@ -175,19 +178,26 @@ class TestGetSchema:
         pairs = [(e["schema"], e["table"]) for e in body]
         assert pairs == sorted(pairs), "catalog not sorted by (schema, table)"
 
-    def test_mocked_schema_excludes_funraise(self):
-        """Without a live DB, verify the SQL in _fetch_schema_from_db only
-        queries _ALLOWED_SCHEMAS and would never return funraise rows."""
-        from service.catalog_api import _ALLOWED_SCHEMAS
-        # Simulate what the DB would return including a rogue funraise row
-        mock_rows = [
-            {"schema": "wms", "table": "fact_monthly_cume", "name": "station_code", "type": "text"},
-            {"schema": "nielsen", "table": "fact_vital_signs", "name": "value_numeric", "type": "numeric"},
-            # This should never come back from DB because funraise is not in _ALLOWED_SCHEMAS,
-            # but if it did the catalog would need to filter it
-        ]
-        assert "funraise" not in _ALLOWED_SCHEMAS
-        # If funraise were not in _ALLOWED_SCHEMAS, the SQL WHERE clause
-        # would never include it, so mock rows from funraise can't appear.
-        filtered = [r for r in mock_rows if r["schema"] in _ALLOWED_SCHEMAS]
-        assert all(r["schema"] != "funraise" for r in filtered)
+    def test_enrich_blocks_funraise_pii_columns(self):
+        """Unit: _enrich_distinct_values must NOT enumerate PII columns even on
+        funraise — it returns early before issuing any query."""
+        from service.catalog_api import _enrich_distinct_values
+        for name in ("email_sha256", "city", "postal_code", "state"):
+            col = {"name": name, "type": "text"}
+            # cur=None proves no DB query is attempted for these columns.
+            _enrich_distinct_values(None, "funraise", "dim_supporters", col)
+            assert "values" not in col, f"{name} should not be value-enumerated"
+
+    def test_enrich_allows_funraise_dimension_column(self):
+        """Unit: a curated dimension column (designation) IS enumerated."""
+        from service.catalog_api import _enrich_distinct_values
+
+        class _FakeCur:
+            def execute(self, *a, **k):
+                pass
+            def fetchall(self):
+                return [{"v": "Foundations", "n": 5}, {"v": "Membership", "n": 3}]
+
+        col = {"name": "designation", "type": "text"}
+        _enrich_distinct_values(_FakeCur(), "funraise", "fact_transactions", col)
+        assert col.get("values") == ["Foundations", "Membership"]

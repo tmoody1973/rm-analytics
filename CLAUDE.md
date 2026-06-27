@@ -480,6 +480,7 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 015_ig_followers.sql   ← APPLIED — meta_organic.fact_ig_followers_daily (loader blocked on token, see MOO-174)
 │   ├── 016_readonly_role.sql  ← APPLIED — rm_readonly Neon role (SELECT allowlist; funraise excluded) for assistant SQL fallback
 │   ├── 017_email_content.sql  ← APPLIED — email_esp.fact_campaign_content + fact_campaign_enrichment (newsletter body + Haiku tags)
+│   ├── 018_funraise_readonly_grant.sql ← APPLIED — rm_readonly gets DE-IDENTIFIED funraise SELECT (column-level on dim_supporters; email_sha256 EXCLUDED)
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
@@ -542,6 +543,7 @@ Fly.io secrets (via `flyctl secrets set`):
 - `META_ACCESS_TOKEN` (long-lived, only if doing direct Meta calls outside Coupler)
 - `MAILCHIMP_API_KEY` — Mailchimp Marketing API key for content sweep
 - `ANTHROPIC_API_KEY` — Anthropic API key for LLM enrichment (`mailchimp-content-nightly`)
+- `INTERNAL_API_TOKEN` — shared secret gating the assistant tool endpoints (also set as a Vercel env on the `dashboard` project; the Vercel CopilotKit function sends it as `X-Internal-Token`). Rotate by re-running `flyctl secrets set` + `vercel env` + redeploying both.
 
 Never commit secrets. Never paste them in chat without rotating after.
 
@@ -643,9 +645,10 @@ Never commit secrets. Never paste them in chat without rotating after.
 - [x] Nielsen upload page live — `POST /upload/nielsen` (open, no auth per request)
 - [x] Funraise rollup cron — Fly scheduled machine `funraise-rollup-nightly` (--schedule daily)
 - [x] Metric service **deployed + live** — `GET /api/metric/{id}?brand=&period=&group_by=` (7 metrics; registry in `metrics/`) [MOO-172/175]. NOTE: Dockerfile now `COPY metrics/` — without it the service crashed on import (`No module named 'metrics'`); first deploy carrying the metric layer exposed this.
-- [x] Read-only role `rm_readonly` on Neon (SELECT allowlist; **funraise blocked**; read-only + 15s timeout) [MOO-173]
-- [x] Guarded SQL endpoint **deployed + live** — `POST /api/ask-sql` (single SELECT/WITH, validator + outer LIMIT wrap, runs on `rm_readonly` via Fly secret `DATABASE_URL_RO`) [MOO-173]. Verified in prod: aggregate→200, donor/DDL→400.
-- [x] Catalog endpoints **deployed + live** — `GET /api/metrics` (registry) + `GET /api/schema` (allowlisted tables/columns + low-cardinality value enumeration; funraise excluded) [MOO-176/177]. (Had been 404 until the 2026-06-27 main redeploy — catalog_api was MOO-177-only and never shipped before.)
+- [x] Read-only role `rm_readonly` on Neon (SELECT allowlist; read-only + 15s timeout) [MOO-173]. **funraise now GRANTED de-identified (schema/018): column-level on dim_supporters, `email_sha256` EXCLUDED at the role level; 3 non-PII funraise tables table-level. No blanket/default-priv grant — future funraise tables need explicit grants.**
+- [x] **Assistant tool endpoints GATED (funraise-unblock)** — `/api/metric`, `/api/metrics`, `/api/schema`, `/api/ask-sql`, `/api/newsletter-content` require header `X-Internal-Token` == Fly+Vercel secret `INTERNAL_API_TOKEN` (`service/internal_auth.py`, constant-time, fail-closed 503 if unset). `/api/dashboard` + `/health` + `/webhook/*` stay OPEN. Verified prod: unauth tool endpoints→401, dashboard/health→200.
+- [x] Guarded SQL endpoint **deployed + live** — `POST /api/ask-sql` (single SELECT/WITH, validator + outer LIMIT wrap, runs on `rm_readonly` via Fly secret `DATABASE_URL_RO`) [MOO-173]. **Now reads DE-IDENTIFIED funraise** (gated). Verified prod: funraise aggregate→200 (14,087 donors/$8.36M), `email_sha256`→permission denied, unauth→401.
+- [x] Catalog endpoints **deployed + live** — `GET /api/metrics` (registry) + `GET /api/schema` (allowlisted tables/columns + low-cardinality value enumeration) [MOO-176/177]. **funraise now INCLUDED** in `/api/schema`; PII column VALUES (email/city/postal) still never enumerated. (Had been 404 until the 2026-06-27 main redeploy — catalog_api was MOO-177-only and never shipped before.)
 - [x] **CopilotKit assistant deployed + live** — Vercel `dashboard` project (https://dashboard-ten-sandy-99.vercel.app), `/api/copilotkit` runtime (Claude, server-authoritative prompt). 5 tools: get_metric, list_metrics, get_schema, query_sql, **get_newsletter_content** [MOO-177].
 - [x] Newsletter content endpoint **deployed + live** — `GET /api/newsletter-content/{campaign_id}` (rm_readonly; body capped 8k chars + truncated flag; 404 when absent). Assistant can read a newsletter AND correlate topics→opens (join `fact_campaign_enrichment` ↔ `stg_campaigns_report`).
 - [x] Mailchimp content sweep — Fly scheduled machine `mailchimp-content-nightly` (--schedule daily, `python jobs/refresh_mailchimp_content.py`); MAILCHIMP_API_KEY + ANTHROPIC_API_KEY Fly secrets set.

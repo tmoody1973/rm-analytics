@@ -30,8 +30,6 @@ def _ro_available() -> bool:
     "GRANT SELECT ON dim.stations TO public",
     "SELECT 1; DROP TABLE dim.stations",          # multi-statement
     "SELECT * FROM secret.tbl",                    # off-allowlist schema
-    "SELECT * FROM funraise.dim_supporters",       # donor table
-    "SELECT funraise.x FROM dim.stations",         # funraise token anywhere
     "SELECT * FROM stations",                      # unqualified table
     "WITH x AS (DELETE FROM dim.s RETURNING 1) SELECT * FROM x",  # smuggled write
     "SELECT * FROM dim.stations; SELECT 1",        # trailing extra statement
@@ -96,16 +94,21 @@ def test_live_aggregate_returns_rows_via_ro_role():
     assert body["data"][0]["n"] >= 0
 
 
-def test_live_donor_table_rejected():
-    from fastapi.testclient import TestClient
+def test_funraise_aggregate_now_validates():
+    # De-identified donor data is unblocked: a funraise SELECT must pass
+    # validation (and get the outer LIMIT cap) rather than raising.
+    out = validate_sql("SELECT count(*) FROM funraise.dim_supporters")
+    assert out.strip().lower().endswith("limit 1000")
 
-    from service.main import app
 
-    client = TestClient(app)
-    r = client.post("/api/ask-sql",
-                    json={"sql": "SELECT count(*) FROM funraise.dim_supporters"})
-    assert r.status_code == 400
-    assert "funraise" in r.json()["detail"].lower()
+def test_funraise_join_validates():
+    out = validate_sql(
+        "SELECT s.state, sum(t.amount) AS total "
+        "FROM funraise.fact_transactions t "
+        "JOIN funraise.dim_supporters s ON s.supporter_id = t.supporter_id "
+        "GROUP BY s.state"
+    )
+    assert out.strip().lower().endswith("limit 1000")
 
 
 def test_cte_only_limit_still_capped():

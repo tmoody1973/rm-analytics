@@ -25,7 +25,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from svix.webhooks import WebhookVerificationError
@@ -33,6 +33,7 @@ from svix.webhooks import WebhookVerificationError
 from . import email, slack
 from .agentmail_client import fetch_attachment_bytes
 from .auth import verify_agentmail, verify_sheet_secret
+from .internal_auth import require_internal_token
 from .router import known_tags, resolve
 
 
@@ -57,10 +58,16 @@ app.add_middleware(
 
 from . import ask_sql_api, catalog_api, metric_api, newsletter_api
 
-app.include_router(metric_api.router)
-app.include_router(ask_sql_api.router)
-app.include_router(catalog_api.router)
-app.include_router(newsletter_api.router)
+# Assistant tool endpoints (/api/metric, /api/metrics, /api/schema, /api/ask-sql,
+# /api/newsletter-content) are called server-to-server by the Clerk-gated Vercel
+# function, never by a browser. They expose the funraise (donor) schema via
+# /api/ask-sql, so each is gated behind the shared INTERNAL_API_TOKEN secret.
+# /api/dashboard (below) stays open — it is the browser's aggregate-only path.
+_internal = [Depends(require_internal_token)]
+app.include_router(metric_api.router, dependencies=_internal)
+app.include_router(ask_sql_api.router, dependencies=_internal)
+app.include_router(catalog_api.router, dependencies=_internal)
+app.include_router(newsletter_api.router, dependencies=_internal)
 
 
 @app.get("/api/dashboard")
