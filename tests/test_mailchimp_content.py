@@ -2,6 +2,7 @@
 import os, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "loaders"))
+sys.path.insert(0, os.path.join(ROOT, "jobs"))
 
 import pytest
 import _mailchimp as mc
@@ -66,6 +67,7 @@ def test_enrich_text_uses_injected_client_and_validates():
 
 
 import load_mailchimp_content as loader
+import refresh_mailchimp_content as job
 
 
 def test_load_builds_rows_and_enriches(monkeypatch):
@@ -96,3 +98,15 @@ def test_load_builds_rows_and_enriches(monkeypatch):
     assert stats["enriched"] == 2
     assert ("email_esp.fact_campaign_content", 2) in calls["upserts"]
     assert ("email_esp.fact_campaign_enrichment", 2) in calls["upserts"]
+
+
+def test_job_run_posts_success(monkeypatch):
+    posted = {}
+    monkeypatch.setattr(job, "load", lambda *a, **k: {"table": "t", "rows_read": 3,
+                        "rows_upserted": 3, "enriched": 3, "elapsed_sec": 1.0})
+    monkeypatch.setattr(job, "post_success", lambda tag, stats: posted.setdefault("ok", (tag, stats)))
+    monkeypatch.setattr(job, "post_failure", lambda tag, err: posted.setdefault("fail", (tag, err)))
+    out = job.run()
+    assert out["tag"] == "[ESP-CONTENT]"
+    assert posted["ok"][0] == "[ESP-CONTENT]"
+    assert "fail" not in posted
