@@ -1,4 +1,5 @@
 import React from 'react'
+import { HistoryView } from './history.jsx'
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, AreaChart, Area,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -1290,4 +1291,5 @@ export const TABS = {
   Digital: DigitalReach,
   Social,
   'Finance / Exec': Financial,
+  History: () => <HistoryView />,
 }
