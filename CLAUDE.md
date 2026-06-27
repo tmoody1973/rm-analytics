@@ -481,6 +481,7 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 016_readonly_role.sql  ← APPLIED — rm_readonly Neon role (SELECT allowlist; funraise excluded) for assistant SQL fallback
 │   ├── 017_email_content.sql  ← APPLIED — email_esp.fact_campaign_content + fact_campaign_enrichment (newsletter body + Haiku tags)
 │   ├── 018_funraise_readonly_grant.sql ← APPLIED — rm_readonly gets DE-IDENTIFIED funraise SELECT (column-level on dim_supporters; email_sha256 EXCLUDED)
+│   ├── 019_chat.sql           ← APPLIED — `chat` schema (threads+messages, tsvector+pg_trgm) for the shared chat archive. NOT granted to rm_readonly.
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
@@ -651,6 +652,7 @@ Never commit secrets. Never paste them in chat without rotating after.
 - [x] Catalog endpoints **deployed + live** — `GET /api/metrics` (registry) + `GET /api/schema` (allowlisted tables/columns + low-cardinality value enumeration) [MOO-176/177]. **funraise now INCLUDED** in `/api/schema`; PII column VALUES (email/city/postal) still never enumerated. (Had been 404 until the 2026-06-27 main redeploy — catalog_api was MOO-177-only and never shipped before.)
 - [x] **CopilotKit assistant deployed + live** — Vercel `dashboard` project (https://dashboard-ten-sandy-99.vercel.app), `/api/copilotkit` runtime (Claude, server-authoritative prompt). 5 tools: get_metric, list_metrics, get_schema, query_sql, **get_newsletter_content** [MOO-177].
 - [x] Newsletter content endpoint **deployed + live** — `GET /api/newsletter-content/{campaign_id}` (rm_readonly; body capped 8k chars + truncated flag; 404 when absent). Assistant can read a newsletter AND correlate topics→opens (join `fact_campaign_enrichment` ↔ `stg_campaigns_report`).
+- [x] **Chat history archive deployed + live** (PR #9) — every assistant conversation is saved to the Neon `chat` schema and any signed-in user can browse + full-text search it via a **History tab**. Capture is client-side (`dashboard/src/chat-persistence.jsx`, saves per completed turn); the Vercel `/api/chats` proxy verifies Clerk + stamps `user_email` via Clerk Backend API, then forwards to the gated Fly `chat_api` (owner role, `INTERNAL_API_TOKEN`). Endpoints: `POST/GET /api/chats`, `GET /api/chats?q=` (tsvector+trigram), `GET /api/chats/{thread_id}`. Stores transcript + `tool_calls` (SQL) only — raw `role:"tool"` result rows are dropped (role allowlist). `chat` schema is NOT granted to `rm_readonly`, so the assistant can't read past sessions. Verified prod: tool endpoints 401 unauth, proxy 401 unauth.
 - [x] Mailchimp content sweep — Fly scheduled machine `mailchimp-content-nightly` (--schedule daily, `python jobs/refresh_mailchimp_content.py`); MAILCHIMP_API_KEY + ANTHROPIC_API_KEY Fly secrets set.
 - [ ] Coupler.io importers running (Meta, GA, ESP)
 - [ ] Slack alerting wired for all sources
