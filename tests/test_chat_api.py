@@ -55,3 +55,15 @@ def test_resave_is_idempotent():
         assert cur.fetchone()[0] == 3   # not 6
         cur.execute("DELETE FROM chat.threads WHERE thread_id=%s", (_TID,))
         c.commit()
+
+@pytest.mark.skipif(not _db(), reason="DATABASE_URL not set")
+def test_list_threads_returns_saved_thread_newest_first():
+    from service.chat_api import save_thread, list_threads, _owner_dsn
+    import psycopg
+    save_thread(_sample(2))
+    rows = list_threads(limit=50)
+    assert any(r["thread_id"] == _TID for r in rows)
+    r = next(r for r in rows if r["thread_id"] == _TID)
+    assert r["message_count"] == 2 and "updated_at" in r
+    with psycopg.connect(_owner_dsn()) as c, c.cursor() as cur:
+        cur.execute("DELETE FROM chat.threads WHERE thread_id=%s", (_TID,)); c.commit()

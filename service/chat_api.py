@@ -94,6 +94,41 @@ def save_thread(payload: dict) -> dict:
     return {"thread_id": t.thread_id, "message_count": len(t.messages)}
 
 
+def _jsonable(v: object) -> object:
+    from datetime import date, datetime
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    return v
+
+
+def list_threads(limit: int = LIST_LIMIT) -> list[dict]:
+    with psycopg.connect(_owner_dsn()) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT thread_id::text, title, user_email, message_count, updated_at
+                FROM chat.threads ORDER BY updated_at DESC LIMIT %s
+                """,
+                (min(limit, 200),),
+            )
+            return [{k: _jsonable(v) for k, v in r.items()} for r in cur.fetchall()]
+
+
+# temporary stub — replaced in Task 4
+def search_chats(q: str, limit: int = SEARCH_LIMIT) -> list[dict]:
+    return []
+
+
+@router.get("/api/chats")
+def get_chats(q: str | None = None, limit: int = LIST_LIMIT) -> list[dict]:
+    try:
+        if q and q.strip():
+            return search_chats(q.strip(), limit=SEARCH_LIMIT)   # Task 4
+        return list_threads(limit=limit)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
 @router.post("/api/chats")
 def post_chat(payload: ChatThreadIn) -> dict:
     try:
