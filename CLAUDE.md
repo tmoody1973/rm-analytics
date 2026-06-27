@@ -528,6 +528,9 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 
 `~/.radio-milwaukee/.env` (chmod 600, gitignored):
 - `DATABASE_URL` — Neon
+- `MAILCHIMP_API_KEY` — Mailchimp Marketing API key (includes `-usNN` suffix)
+- `ANTHROPIC_API_KEY` — Anthropic API key for newsletter enrichment
+- `ENRICH_MODEL` — optional override; default `claude-haiku-4-5-20251001`
 
 Fly.io secrets (via `flyctl secrets set`):
 - `DATABASE_URL`
@@ -536,6 +539,8 @@ Fly.io secrets (via `flyctl secrets set`):
 - `FUNRAISE_WEBHOOK_SECRET`
 - `SLACK_WEBHOOK_URL`
 - `META_ACCESS_TOKEN` (long-lived, only if doing direct Meta calls outside Coupler)
+- `MAILCHIMP_API_KEY` — Mailchimp Marketing API key for content sweep
+- `ANTHROPIC_API_KEY` — Anthropic API key for LLM enrichment (`mailchimp-content-nightly`)
 
 Never commit secrets. Never paste them in chat without rotating after.
 
