@@ -12,6 +12,7 @@ export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [tab, setTab] = useState('Overview')
+  const [navOpen, setNavOpen] = useState(false)   // mobile section-switcher
   const [brand, setBrand] = useState(ALL)
   const [range, setRange] = useState(DEFAULT_RANGE)
   const [threadId] = useState(() => crypto.randomUUID())
@@ -73,6 +74,24 @@ export default function App() {
             <button key={t} className={'tab' + (t === tab ? ' active' : '')} onClick={() => setTab(t)}>{t}</button>
           ))}
         </nav>
+
+        {/* Mobile section switcher: ☰ + current section → stacked menu (CSS hides
+            this on desktop and the horizontal .tabs on mobile). */}
+        <div className={'navm' + (navOpen ? ' open' : '')}>
+          <button className="navm-toggle" onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}>
+            <span className="navm-burger" aria-hidden>☰</span>
+            <span className="navm-current">{tab}</span>
+            <span className="navm-chev" aria-hidden>▾</span>
+          </button>
+          {navOpen ? (
+            <div className="navm-menu">
+              {Object.keys(TABS).map((t) => (
+                <button key={t} className={'navm-item' + (t === tab ? ' active' : '')}
+                  onClick={() => { setTab(t); setNavOpen(false); window.scrollTo(0, 0) }}>{t}</button>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         {/* Board (Overview) brand-filters its per-station reach/market cards too, so the
             filter bar shows on every tab; org-wide cards carry an OrgWideBadge and ignore it. */}
