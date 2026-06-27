@@ -2,10 +2,11 @@
 
 The assistant prefers registered metrics; for the long tail it may emit a single
 read-only SELECT. validate_sql() enforces: one statement, SELECT/WITH only, no
-DDL/DML keywords, and a best-effort FROM/JOIN allowlist check on non-PII schemas.
-The rm_readonly Neon role (DATABASE_URL_RO) is the AUTHORITATIVE allowlist and
-funraise enforcer — exotic join forms and comma-joins not caught by the regex are
-blocked by the role's permission denial, surfaced as 403.
+DDL/DML keywords, and a best-effort FROM/JOIN allowlist check. funraise
+(de-identified donor data) is on the allowlist; the endpoint itself is gated
+behind INTERNAL_API_TOKEN. The rm_readonly Neon role (DATABASE_URL_RO) is the
+AUTHORITATIVE allowlist enforcer — exotic join forms and comma-joins not caught
+by the regex are blocked by the role's permission denial, surfaced as 403.
 """
 from __future__ import annotations
 
@@ -23,11 +24,12 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# Keep in sync with the grants in schema/016_readonly_role.sql. funraise is
-# intentionally absent — donor data is exposed only as metric aggregates.
+# Keep in sync with the grants in schema/016 + schema/018_funraise_readonly_grant.sql.
+# funraise (de-identified donor data) is included; the endpoint is gated behind
+# INTERNAL_API_TOKEN and the system prompt forbids surfacing individual PII.
 ALLOWED_SCHEMAS: frozenset[str] = frozenset({
     "wms", "nielsen", "ga", "meta_organic", "meta_ads",
-    "email_esp", "finance", "dim", "marts",
+    "email_esp", "finance", "dim", "marts", "funraise",
 })
 
 MAX_ROWS = 1000
@@ -58,12 +60,12 @@ def _strip_comments(sql: str) -> str:
 
 
 def _check_relations(cleaned: str) -> bool:
-    """Reject funraise, off-allowlist schemas, and bare (non-CTE) tables.
+    """Reject off-allowlist schemas and bare (non-CTE) tables.
 
+    funraise is now on the allowlist (de-identified donor data); the rm_readonly
+    role and the INTERNAL_API_TOKEN gate are the authoritative enforcers.
     Returns True if at least one FROM/JOIN relation was seen.
     """
-    if "funraise" in cleaned.lower():
-        raise SqlValidationError("funraise (donor) data is not queryable via SQL")
     cte_names = {m.group(1).lower() for m in _CTE_NAME.finditer(cleaned)}
     saw_relation = False
     for m in _REL.finditer(cleaned):

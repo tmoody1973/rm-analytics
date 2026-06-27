@@ -29,12 +29,13 @@ from metrics.registry import REGISTRY  # noqa: E402
 
 router = APIRouter()
 
-# Keep in sync with schema/016_readonly_role.sql.
-# funraise is intentionally absent — donor data is blocked at the role level
-# and must not leak even as table/column metadata.
+# Keep in sync with schema/016 + schema/018_funraise_readonly_grant.sql.
+# funraise (de-identified donor data) is included so the assistant can query it;
+# the endpoint is gated behind INTERNAL_API_TOKEN and PII column VALUES are never
+# enumerated (see _SENSITIVE_NAME_BITS / _DIMENSION_COLUMNS below).
 _ALLOWED_SCHEMAS: frozenset[str] = frozenset({
     "wms", "nielsen", "ga", "meta_organic", "meta_ads",
-    "email_esp", "finance", "dim", "marts",
+    "email_esp", "finance", "dim", "marts", "funraise",
 })
 
 _ENV_PATH = Path.home() / ".radio-milwaukee" / ".env"
@@ -119,6 +120,20 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
         "stg_campaigns_report on campaign_id for the open/click rates. model='skipped-empty-body' "
         "means there was no body to tag (tags are null)."
     ),
+    ("funraise", "dim_supporters"): (
+        "DE-IDENTIFIED donor records — NO names, NO raw email, NO phone. `supporter_id` is an opaque "
+        "key. Has city/state/postal (geo), `email_sha256` (one-way hash, NOT an address), "
+        "lifetime_total/recurring_total/onetime_total, first/last_donation_at, active_12mo. Aggregate "
+        "for analysis; never present an individual donor's identity (you cannot — there is none here)."
+    ),
+    ("funraise", "fact_transactions"): (
+        "Every gift (one-time + recurring; `recurring` bool). amount/net/fee, transaction_at, "
+        "`designation`/`fund` (+restricted flag), `status`, `channel`, utm_*, campaign_id, refund cols. "
+        "No donor name. The Jan 2026 spike is a single $1M foundation grant (designation 'Foundations'); "
+        "the warehouse cannot name the funder."
+    ),
+    ("funraise", "dim_campaigns"): "Funraise campaign metadata (`name` = campaign name, not a donor name).",
+    ("funraise", "fact_subscriptions"): "Recurring giving plans: active/churned, amount, frequency. ~$47.5K MRR.",
 }
 
 

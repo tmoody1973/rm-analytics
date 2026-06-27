@@ -12,6 +12,10 @@
  *   get_newsletter_content – full body + topic tags for one Mailchimp newsletter
  *
  * All handlers call process.env.API_BASE (default: https://rm-data-loader.fly.dev).
+ *
+ * These Fly endpoints are gated behind a shared secret (INTERNAL_API_TOKEN) — this
+ * Vercel function is the only authorized caller. Every fetch sends it as the
+ * X-Internal-Token header. The browser never calls the Fly endpoints directly.
  */
 
 import { defineTool } from "@copilotkit/runtime/v2";
@@ -19,6 +23,12 @@ import { z } from "zod";
 
 const API_BASE = () =>
   (process.env.API_BASE ?? "https://rm-data-loader.fly.dev").replace(/\/$/, "");
+
+// Shared secret sent to the gated Fly tool endpoints. Empty string if unset so
+// the header is always present and deterministic (the server rejects a bad token).
+const internalHeaders = (): Record<string, string> => ({
+  "X-Internal-Token": process.env.INTERNAL_API_TOKEN ?? "",
+});
 
 // ─────────────────────────────────────────────────────────────── get_metric ───
 
@@ -57,7 +67,7 @@ Parameters:
     const qs = params.toString();
     const url = `${API_BASE()}/api/metric/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: internalHeaders() });
     const body = await res.json() as Record<string, unknown>;
 
     if (!res.ok) {
@@ -78,7 +88,7 @@ Call this when you are unsure which metric id to pass to get_metric.
 Each entry includes: id, name, description, unit, source.`,
   parameters: z.object({}),
   execute: async () => {
-    const res = await fetch(`${API_BASE()}/api/metrics`);
+    const res = await fetch(`${API_BASE()}/api/metrics`, { headers: internalHeaders() });
     const body = await res.json() as unknown;
 
     if (!res.ok) {
@@ -96,11 +106,11 @@ export const getSchemaTool = defineTool({
   name: "get_schema",
   description: `Return the allowlisted tables and columns available for SQL queries in the warehouse.
 ALWAYS call this before query_sql so your SQL targets valid, accessible tables.
-The funraise (donor) schema is excluded — it is blocked at the database role level.
+Includes the funraise (donor) schema — DE-IDENTIFIED only (no names/emails/phones); see its table notes.
 Returns: [{schema, table, columns: [{name, type}], note?}, ...]`,
   parameters: z.object({}),
   execute: async () => {
-    const res = await fetch(`${API_BASE()}/api/schema`);
+    const res = await fetch(`${API_BASE()}/api/schema`, { headers: internalHeaders() });
     const body = await res.json() as unknown;
 
     if (!res.ok) {
@@ -122,7 +132,7 @@ ALWAYS call get_schema first to confirm table names and columns.
 
 Rules enforced by the backend:
   - Single SELECT or WITH (CTE) statement only; no INSERT/UPDATE/DELETE/DDL
-  - Runs as rm_readonly role — funraise schema is blocked
+  - Runs as rm_readonly role — includes DE-IDENTIFIED funraise (donor) data; never surface individual PII
   - A 15-second statement timeout applies
   - The backend wraps queries in an outer LIMIT to cap result size
 
@@ -136,7 +146,7 @@ On error the backend returns {detail: "..."} — this is surfaced as a readable 
   execute: async ({ sql }) => {
     const res = await fetch(`${API_BASE()}/api/ask-sql`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...internalHeaders() },
       body: JSON.stringify({ sql }),
     });
 
@@ -178,7 +188,7 @@ On a missing/unknown id the backend returns 404 — surfaced as a readable {erro
   }),
   execute: async ({ campaign_id }) => {
     const url = `${API_BASE()}/api/newsletter-content/${encodeURIComponent(campaign_id)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: internalHeaders() });
     const body = await res.json() as Record<string, unknown>;
 
     if (!res.ok) {

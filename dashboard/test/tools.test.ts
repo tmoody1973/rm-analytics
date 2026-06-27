@@ -53,17 +53,26 @@ function makeFetchResponse(
 // ── Setup / teardown ─────────────────────────────────────────────────────────
 
 const originalFetch = globalThis.fetch;
+const TEST_TOKEN = "test-internal-token";
 
 beforeEach(() => {
   // Reset env overrides before each test
   delete process.env.API_BASE;
+  // The tools send this shared secret to the gated Fly endpoints.
+  process.env.INTERNAL_API_TOKEN = TEST_TOKEN;
 });
 
 afterEach(() => {
   // Restore any stubbed fetch
   vi.unstubAllGlobals();
   globalThis.fetch = originalFetch;
+  delete process.env.INTERNAL_API_TOKEN;
 });
+
+/** Pull the X-Internal-Token header out of a fetch init (GET or POST shape). */
+function tokenHeader(init: RequestInit | undefined): string | undefined {
+  return (init?.headers as Record<string, string> | undefined)?.["X-Internal-Token"];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Name mapping
@@ -118,7 +127,7 @@ describe("getMetricTool", () => {
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
     expect(url).toBe("https://rm-data-loader.fly.dev/api/metric/streaming_tlh");
     expect(url).not.toContain("?");
-    expect(init).toBeUndefined();          // GET — no body/headers passed
+    expect(tokenHeader(init)).toBe(TEST_TOKEN);   // GET — gated, sends shared secret
     expect(result).toEqual({ id: "streaming_tlh", value: 4200 });
   });
 
@@ -205,7 +214,7 @@ describe("listMetricsTool", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
     expect(url).toBe("https://rm-data-loader.fly.dev/api/metrics");
-    expect(init).toBeUndefined();
+    expect(tokenHeader(init)).toBe(TEST_TOKEN);
   });
 
   it("returns the parsed JSON body unchanged on 200", async () => {
@@ -259,7 +268,7 @@ describe("getSchemaTool", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
     expect(url).toBe("https://rm-data-loader.fly.dev/api/schema");
-    expect(init).toBeUndefined();
+    expect(tokenHeader(init)).toBe(TEST_TOKEN);
   });
 
   it("returns the parsed JSON body unchanged on 200", async () => {
@@ -314,6 +323,7 @@ describe("querySqlTool", () => {
     expect(url).toBe("https://rm-data-loader.fly.dev/api/ask-sql");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(tokenHeader(init)).toBe(TEST_TOKEN);   // gated endpoint
     // Verify the SQL is serialized into the body correctly
     expect(JSON.parse(init.body as string)).toEqual({ sql: testSql });
   });
@@ -430,6 +440,8 @@ describe("getNewsletterContentTool", () => {
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
     // The slash in the id must be percent-encoded so it stays a single path segment
     expect(url).toBe("https://rm-data-loader.fly.dev/api/newsletter-content/a%2Fb");
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
+    expect(tokenHeader(init)).toBe(TEST_TOKEN);
   });
 
   it("returns the parsed JSON body unchanged on 200", async () => {
