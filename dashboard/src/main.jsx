@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider, SignIn, useAuth } from '@clerk/react'
 import { CopilotKit, useCopilotKit } from '@copilotkit/react-core/v2'
@@ -52,13 +52,27 @@ function SignInScreen() {
 }
 
 // Hook-based gate (clerk-react-patterns): never render the dashboard until a
-// signed-in session is confirmed.
+// signed-in session is confirmed. We also fetch the first token BEFORE mounting
+// CopilotKit so its initial /info request already carries auth (no 401 race);
+// TokenSync then keeps it refreshed.
 function Gate() {
-  const { isLoaded, isSignedIn } = useAuth()
+  const { isLoaded, isSignedIn, getToken } = useAuth()
+  const [initialHeaders, setInitialHeaders] = useState(null)
+
+  useEffect(() => {
+    if (!isSignedIn) return
+    let active = true
+    getToken().then((t) => {
+      if (active) setInitialHeaders(t ? { Authorization: `Bearer ${t}` } : {})
+    }).catch(() => { if (active) setInitialHeaders({}) })
+    return () => { active = false }
+  }, [isSignedIn, getToken])
+
   if (!isLoaded) return <div className="loading">Loading…</div>
   if (!isSignedIn) return <SignInScreen />
+  if (!initialHeaders) return <div className="loading">Signing you in…</div>
   return (
-    <CopilotKit runtimeUrl="/api/copilotkit" useSingleEndpoint={false}>
+    <CopilotKit runtimeUrl="/api/copilotkit" useSingleEndpoint={false} headers={initialHeaders}>
       <TokenSync />
       <App />
     </CopilotKit>
