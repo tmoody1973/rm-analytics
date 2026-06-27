@@ -26,12 +26,17 @@ ENRICH_TABLE = "email_esp.fact_campaign_enrichment"
 DEFAULT_MODEL = os.environ.get("ENRICH_MODEL", "claude-haiku-4-5-20251001")
 
 
-def campaigns_missing_content(conn) -> list[str]:
+def campaigns_to_process(conn, *, include_unenriched: bool = True) -> list[str]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT s.campaign_id FROM email_esp.fact_campaign_sends s "
-            "LEFT JOIN email_esp.fact_campaign_content c USING (campaign_id) "
-            "WHERE c.campaign_id IS NULL ORDER BY s.send_time"
+            "SELECT s.campaign_id "
+            "FROM email_esp.fact_campaign_sends s "
+            "LEFT JOIN email_esp.fact_campaign_content    c USING (campaign_id) "
+            "LEFT JOIN email_esp.fact_campaign_enrichment e USING (campaign_id) "
+            "WHERE c.campaign_id IS NULL "
+            "   OR (%s AND e.campaign_id IS NULL) "
+            "ORDER BY s.send_time",
+            (include_unenriched,),
         )
         return [r[0] for r in cur.fetchall()]
 
@@ -49,22 +54,28 @@ def load(campaign_ids=None, *, api_key=None, enrich=True, client=None,
     owns_conn = conn is None
     conn = conn or get_db_connection()
     try:
-        ids = list(campaign_ids) if campaign_ids is not None else campaigns_missing_content(conn)
+        ids = list(campaign_ids) if campaign_ids is not None else campaigns_to_process(conn, include_unenriched=enrich)
 
         content_rows, enrich_rows = [], []
+        failed: list[str] = []
         if enrich and ids and client is None:
             client = _anthropic_client()
 
         for cid in ids:
-            raw = fetch_campaign_content(api_key, cid)
-            parsed = parse_content(raw.get("html"), raw.get("plain_text"))
-            content_rows.append((cid, parsed["plain_text"], parsed["html"],
-                                 json.dumps(parsed["links"]), parsed["word_count"]))
-            if enrich:
-                tags = enrich_text(client, parsed["plain_text"], model=model)
-                enrich_rows.append((cid, tags["primary_theme"], json.dumps(tags["topics"]),
-                                    tags["content_type"], json.dumps(tags["featured_artists"]),
-                                    model))
+            try:
+                raw = fetch_campaign_content(api_key, cid)
+                parsed = parse_content(raw.get("html"), raw.get("plain_text"))
+                content_rows.append((cid, parsed["plain_text"], parsed["html"],
+                                     json.dumps(parsed["links"]), parsed["word_count"]))
+                if enrich:
+                    tags = enrich_text(client, parsed["plain_text"], model=model)
+                    enrich_rows.append((cid, tags["primary_theme"], json.dumps(tags["topics"]),
+                                        tags["content_type"], json.dumps(tags["featured_artists"]),
+                                        model))
+            except Exception as exc:
+                print(f"[ESP-CONTENT] skipped {cid}: {exc}")
+                failed.append(cid)
+                continue
 
         upserted = bulk_upsert(
             conn, CONTENT_TABLE,
@@ -82,6 +93,7 @@ def load(campaign_ids=None, *, api_key=None, enrich=True, client=None,
             )
         return {"table": CONTENT_TABLE, "rows_read": len(ids),
                 "rows_upserted": upserted, "enriched": len(enrich_rows),
+                "failed": len(failed),
                 "elapsed_sec": round(time.time() - start, 1)}
     finally:
         if owns_conn:

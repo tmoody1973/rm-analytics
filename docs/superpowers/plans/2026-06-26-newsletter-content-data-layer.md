@@ -654,7 +654,7 @@ git commit -m "feat(email): nightly newsletter-content sweep job + Slack"
 ```bash
 source .venv/bin/activate
 python -c "import sys; sys.path.insert(0,'loaders'); from _common import get_db_connection; \
-from load_mailchimp_content import campaigns_missing_content as m; \
+from load_mailchimp_content import campaigns_to_process as m; \
 c=get_db_connection(); print('missing content:', len(m(c)))"
 ```
 

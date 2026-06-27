@@ -110,3 +110,56 @@ def test_job_run_posts_success(monkeypatch):
     assert out["tag"] == "[ESP-CONTENT]"
     assert posted["ok"][0] == "[ESP-CONTENT]"
     assert "fail" not in posted
+
+
+# D. Failure-path test
+def test_job_run_posts_failure(monkeypatch):
+    posted = {}
+    monkeypatch.setattr(job, "load", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(job, "post_success", lambda tag, stats: posted.setdefault("ok", (tag, stats)))
+    monkeypatch.setattr(job, "post_failure", lambda tag, err: posted.setdefault("fail", (tag, err)))
+    with pytest.raises(RuntimeError):
+        job.run()
+    assert posted["fail"][0] == "[ESP-CONTENT]"
+    assert "ok" not in posted
+
+
+# F. HTML fallback test
+def test_parse_content_falls_back_to_html_when_plaintext_empty():
+    html = '<p>Hello <a href="https://radiomilwaukee.org/listen">listen here</a> now</p>'
+    out = mc.parse_content(html, "")
+    assert out["word_count"] > 0
+    assert out["links"] == [{"url": "https://radiomilwaukee.org/listen", "label": "listen here"}]
+    assert out["html"] == html
+
+
+# E. Datacenter validation test
+def test_base_url_rejects_invalid_datacenter_suffix():
+    with pytest.raises(ValueError):
+        mc.mailchimp_base_url("abc-notadc")
+
+
+# G. fetch_campaign_content endpoint + auth test
+def test_fetch_campaign_content_calls_endpoint_with_basic_auth():
+    class FakeResponse:
+        def raise_for_status(self):
+            self._raised = True
+        def json(self):
+            return {"plain_text": "x", "html": "<p>x</p>"}
+
+    calls = {}
+
+    class FakeSession:
+        def get(self, url, *, auth, timeout):
+            calls["url"] = url
+            calls["auth"] = auth
+            calls["timeout"] = timeout
+            self._resp = FakeResponse()
+            return self._resp
+
+    session = FakeSession()
+    result = mc.fetch_campaign_content("mykey-us1", "CID", session=session)
+    assert calls["url"] == "https://us1.api.mailchimp.com/3.0/campaigns/CID/content"
+    assert calls["auth"][1] == "mykey-us1"
+    assert hasattr(session._resp, "_raised")  # raise_for_status was called
+    assert result == {"plain_text": "x", "html": "<p>x</p>"}

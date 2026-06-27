@@ -24,9 +24,9 @@ TAG = "[ESP-CONTENT]"
 def run() -> dict:
     try:
         stats = load(None)            # sweep mode: campaigns missing content
-        stats["tag"] = TAG
-        post_success(TAG, stats)
-        return stats
+        result = {**stats, "tag": TAG}
+        post_success(TAG, result)
+        return result
     except Exception as exc:          # noqa: BLE001 — report then re-raise
         post_failure(TAG, str(exc))
         raise

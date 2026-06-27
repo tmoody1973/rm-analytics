@@ -20,6 +20,8 @@ def mailchimp_base_url(api_key: str) -> str:
     if "-" not in api_key or not api_key.rsplit("-", 1)[-1]:
         raise ValueError("Mailchimp API key missing the `-usNN` data-center suffix")
     dc = api_key.rsplit("-", 1)[-1]
+    if not re.fullmatch(r"us\d+", dc):
+        raise ValueError(f"Mailchimp API key has invalid data-center suffix: {dc!r} (expected us<N>)")
     return f"https://{dc}.api.mailchimp.com/3.0"
 
 
@@ -31,6 +33,10 @@ def parse_content(html: str | None, plain_text: str | None) -> dict:
         for url, raw_label in _LINK_RE.findall(html):
             label = _TAG_RE.sub("", raw_label).strip()
             links.append({"url": url, "label": label})
+    if not text and html:
+        # HTML-only campaign: strip tags to derive plain text for word_count + LLM
+        stripped = _TAG_RE.sub(" ", html)
+        text = " ".join(stripped.split())
     return {
         "plain_text": text,
         "html": html if html else None,
