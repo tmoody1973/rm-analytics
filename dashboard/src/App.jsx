@@ -88,9 +88,9 @@ export default function App() {
       <CopilotSidebar
         agentId="default"
         labels={{
-          title: 'Ask the data analyst',
-          initial: 'Ask about streaming, membership, audience, or revenue — every number is pulled live and cited.',
-          placeholder: 'What would you like to know about the data?',
+          modalHeaderTitle: 'Radio Milwaukee Data Analyst',
+          welcomeMessageText: 'Ask about streaming, membership, audience, or revenue — every number is pulled live and cited.',
+          chatInputPlaceholder: 'What would you like to know about the data?',
         }}
         defaultOpen={false}
         clickOutsideToClose={false}
