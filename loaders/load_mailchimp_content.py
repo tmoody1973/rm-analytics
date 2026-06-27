@@ -19,7 +19,7 @@ import time
 sys.path.insert(0, os.path.dirname(__file__))
 from _common import get_db_connection, bulk_upsert  # noqa: E402
 from _mailchimp import fetch_campaign_content, parse_content  # noqa: E402
-from _enrich import enrich_text  # noqa: E402
+from _enrich import enrich_text, validate_enrichment  # noqa: E402
 
 CONTENT_TABLE = "email_esp.fact_campaign_content"
 ENRICH_TABLE = "email_esp.fact_campaign_enrichment"
@@ -74,10 +74,19 @@ def load(campaign_ids=None, *, api_key=None, enrich=True, client=None,
                 content_rows.append((cid, parsed["plain_text"], parsed["html"],
                                      json.dumps(parsed["links"]), parsed["word_count"]))
                 if enrich:
-                    tags = enrich_text(client, parsed["plain_text"], model=model)
+                    # Some campaigns (RSS, archived, A/B variants) return an empty
+                    # body. Don't ask the LLM to tag nothing — it hallucinates a
+                    # theme. Store honest empty tags so the row is marked processed
+                    # (not re-fetched) without fabricated content.
+                    if parsed["word_count"] > 0:
+                        tags = enrich_text(client, parsed["plain_text"], model=model)
+                        tag_model = model
+                    else:
+                        tags = validate_enrichment({})
+                        tag_model = "skipped-empty-body"
                     enrich_rows.append((cid, tags["primary_theme"], json.dumps(tags["topics"]),
                                         tags["content_type"], json.dumps(tags["featured_artists"]),
-                                        model))
+                                        tag_model))
             except Exception as exc:
                 print(f"[ESP-CONTENT] skipped {cid}: {exc}")
                 failed.append(cid)

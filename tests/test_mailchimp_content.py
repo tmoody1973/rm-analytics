@@ -195,3 +195,35 @@ def test_load_isolates_per_campaign_failure(monkeypatch):
     content_rows = captured["email_esp.fact_campaign_content"][0]
     assert len(content_rows) == 1
     assert content_rows[0][0] == "good"     # campaign_id is first tuple element
+
+
+def test_load_skips_llm_for_empty_body(monkeypatch):
+    captured = {}
+    enrich_calls = []
+
+    def fake_fetch(api_key, cid, session=None):
+        # Empty-body campaign: no html, no plain_text (RSS/archived/variant).
+        return {"html": None, "plain_text": ""}
+
+    def fake_enrich(client, text, *, model):
+        enrich_calls.append(text)
+        return {"primary_theme": "events", "topics": ["events"],
+                "content_type": "newsletter", "featured_artists": []}
+
+    def fake_bulk_upsert(conn, table, columns, rows, conflict_columns, update_columns, batch_size=5000):
+        captured.setdefault(table, []).append(rows)
+        return len(rows)
+
+    monkeypatch.setattr(loader, "fetch_campaign_content", fake_fetch)
+    monkeypatch.setattr(loader, "enrich_text", fake_enrich)
+    monkeypatch.setattr(loader, "bulk_upsert", fake_bulk_upsert)
+
+    stats = loader.load(["empty"], api_key="k-us1", client=object(),
+                        model="m", conn=object())
+
+    assert enrich_calls == []                # LLM never asked to tag empty content
+    assert stats["enriched"] == 1            # an enrichment row is still written
+    enrich_rows = captured["email_esp.fact_campaign_enrichment"][0]
+    assert enrich_rows[0][1] is None         # primary_theme null (no fabricated tag)
+    assert enrich_rows[0][3] is None         # content_type null
+    assert enrich_rows[0][5] == "skipped-empty-body"   # model column documents the skip
