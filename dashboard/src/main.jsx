@@ -30,12 +30,25 @@ function TokenSync() {
           copilotkit.setHeaders({ Authorization: token ? `Bearer ${token}` : null })
         }
       } catch {
-        /* transient; the interval retries */
+        /* transient; the next trigger retries */
       }
     }
     sync()
-    const id = setInterval(sync, 50_000)
-    return () => { active = false; clearInterval(id) }
+    // Active tab: refresh well ahead of the ~60s Clerk token TTL.
+    const id = setInterval(sync, 30_000)
+    // Backgrounded tabs THROTTLE/suspend setInterval, so an idle tab's token can
+    // lapse and the next request would send an expired token (→ 401). Refresh the
+    // instant the tab is revealed/refocused — before the user can submit — so a
+    // returning idle tab never carries a stale token.
+    const onVisible = () => { if (document.visibilityState === 'visible') sync() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', sync)
+    return () => {
+      active = false
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', sync)
+    }
   }, [getToken, copilotkit])
   return null
 }
