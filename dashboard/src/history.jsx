@@ -1,6 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@clerk/react'
 
+export function toolCallSummary(toolCalls) {
+  // Returns [{name, args}] from either the AG-UI shape or a simple {name,args} shape.
+  return (toolCalls || []).map((c) => {
+    const name = c.function?.name ?? c.name ?? 'tool';
+    let parsed = c.function?.arguments ?? c.args ?? {};
+    if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { /* keep string */ } }
+    return { name, args: parsed };
+  });
+}
+
 export function chatsUrl({ q, id } = {}) {
   if (id) return `/api/chats?id=${encodeURIComponent(id)}`
   if (q) return `/api/chats?q=${encodeURIComponent(q)}`
@@ -39,7 +49,15 @@ export function HistoryView() {
             <div className="chat-content">{m.content}</div>
             {m.tool_calls ? (
               <details className="chat-sql"><summary>SQL it ran</summary>
-                <pre>{JSON.stringify(m.tool_calls, null, 2)}</pre></details>
+                {toolCallSummary(m.tool_calls).map((tc, i) => (
+                  <div key={i}>
+                    <strong>{tc.name}</strong>
+                    {tc.args.sql
+                      ? <pre>{tc.args.sql}</pre>
+                      : <pre>{JSON.stringify(tc.args, null, 2)}</pre>}
+                  </div>
+                ))}
+              </details>
             ) : null}
           </div>
         ))}

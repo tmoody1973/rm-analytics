@@ -7,6 +7,7 @@ import { useAuth } from '@clerk/react'
 // `toolCalls` on the message if present.
 export function toSavePayload(threadId, messages) {
   const cleaned = (messages || []).filter((m) => {
+    if (m.role !== 'user' && m.role !== 'assistant') return false   // drop tool/system/etc.
     const empty = !(m.content && m.content.trim()) && !(m.toolCalls && m.toolCalls.length)
     return !(empty && m.role === 'assistant')
   })
@@ -14,7 +15,7 @@ export function toSavePayload(threadId, messages) {
     thread_id: threadId,
     messages: cleaned.map((m, seq) => ({
       seq,
-      role: m.role === 'assistant' ? 'assistant' : 'user',
+      role: m.role,
       content: m.content ?? '',
       tool_calls: m.toolCalls && m.toolCalls.length ? m.toolCalls : null,
     })),

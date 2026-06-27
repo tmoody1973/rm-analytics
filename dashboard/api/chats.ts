@@ -5,7 +5,7 @@
  * never holds the internal token and cannot set its own identity.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { verifyToken } from "@clerk/backend";
+import { createClerkClient, verifyToken } from "@clerk/backend";
 
 const API_BASE = () =>
   (process.env.API_BASE ?? "https://rm-data-loader.fly.dev").replace(/\/$/, "");
@@ -21,7 +21,19 @@ export function buildFlyTarget(method: string, query: Record<string, string>): s
   return "/api/chats";
 }
 
-async function verifiedClaims(req: IncomingMessage): Promise<{ sub: string; email?: string } | null> {
+async function emailForUser(sub: string): Promise<string | null> {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  if (!secretKey) return null;
+  try {
+    const u = await createClerkClient({ secretKey }).users.getUser(sub);
+    const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId);
+    return primary?.emailAddress ?? u.emailAddresses[0]?.emailAddress ?? null;
+  } catch {
+    return null;   // best-effort: never block the save on a lookup failure
+  }
+}
+
+async function verifiedClaims(req: IncomingMessage): Promise<{ sub: string } | null> {
   const secretKey = process.env.CLERK_SECRET_KEY;
   if (!secretKey) return null;
   const header = req.headers["authorization"];
@@ -29,7 +41,7 @@ async function verifiedClaims(req: IncomingMessage): Promise<{ sub: string; emai
   if (!token) return null;
   try {
     const c = await verifyToken(token, { secretKey }) as Record<string, unknown>;
-    return { sub: String(c.sub), email: (c.email as string) ?? undefined };
+    return { sub: String(c.sub) };
   } catch {
     return null;
   }
@@ -60,7 +72,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const raw = await readBody(req);
     const body = raw ? JSON.parse(raw) : {};
     body.clerk_user_id = claims.sub;          // stamp identity from the token
-    body.user_email = claims.email ?? null;
+    body.user_email = await emailForUser(claims.sub);
     init = { method: "POST",
       headers: { "Content-Type": "application/json", ...internalHeaders() },
       body: JSON.stringify(body) };

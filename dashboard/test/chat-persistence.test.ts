@@ -22,4 +22,21 @@ describe("toSavePayload", () => {
     const p = toSavePayload("t-2", msgs);
     expect(p.messages).toHaveLength(1);
   });
+
+  it("drops tool/system messages and never coerces other roles to user", () => {
+    const msgs = [
+      { role: "user", content: "Who are top donors?" },
+      { role: "tool", content: '{"data":[{"name":"Alice","amount":500}]}' },
+      { role: "assistant", content: "The top donor is Alice with $500." },
+    ];
+    const p = toSavePayload("t-3", msgs);
+    // tool message must be dropped
+    expect(p.messages.find((m: { role: string }) => m.role === "tool")).toBeUndefined();
+    // assistant message must stay as 'assistant', not relabeled to 'user'
+    const asst = p.messages.find((m: { role: string }) => m.role === "assistant");
+    expect(asst).toBeDefined();
+    expect(asst!.role).toBe("assistant");
+    // only 2 messages: user + assistant
+    expect(p.messages).toHaveLength(2);
+  });
 });
