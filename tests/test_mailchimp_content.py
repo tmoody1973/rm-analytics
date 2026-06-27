@@ -163,3 +163,35 @@ def test_fetch_campaign_content_calls_endpoint_with_basic_auth():
     assert calls["auth"][1] == "mykey-us1"
     assert hasattr(session._resp, "_raised")  # raise_for_status was called
     assert result == {"plain_text": "x", "html": "<p>x</p>"}
+
+
+# A. Per-campaign failure isolation test
+def test_load_isolates_per_campaign_failure(monkeypatch):
+    captured = {}
+
+    def fake_fetch(api_key, cid, session=None):
+        if cid == "bad":
+            raise RuntimeError("404")
+        return {"html": f'<a href="https://x/{cid}">go</a>', "plain_text": f"body {cid}"}
+
+    def fake_enrich(client, text, *, model):
+        return {"primary_theme": "events", "topics": ["events"],
+                "content_type": "newsletter", "featured_artists": []}
+
+    def fake_bulk_upsert(conn, table, columns, rows, conflict_columns, update_columns, batch_size=5000):
+        captured.setdefault(table, []).append(rows)
+        return len(rows)
+
+    monkeypatch.setattr(loader, "fetch_campaign_content", fake_fetch)
+    monkeypatch.setattr(loader, "enrich_text", fake_enrich)
+    monkeypatch.setattr(loader, "bulk_upsert", fake_bulk_upsert)
+
+    stats = loader.load(["good", "bad"], api_key="k-us1", client=object(),
+                        model="m", conn=object())
+
+    assert stats["failed"] == 1
+    assert stats["rows_read"] == 2          # both ids attempted
+    assert stats["rows_upserted"] == 1      # only the good one landed
+    content_rows = captured["email_esp.fact_campaign_content"][0]
+    assert len(content_rows) == 1
+    assert content_rows[0][0] == "good"     # campaign_id is first tuple element

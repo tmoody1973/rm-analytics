@@ -75,7 +75,6 @@ def load(campaign_ids=None, *, api_key=None, enrich=True, client=None,
             except Exception as exc:
                 print(f"[ESP-CONTENT] skipped {cid}: {exc}")
                 failed.append(cid)
-                continue
 
         upserted = bulk_upsert(
             conn, CONTENT_TABLE,
