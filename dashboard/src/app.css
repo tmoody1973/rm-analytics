@@ -85,7 +85,7 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
 .signin-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: var(--sp-3); padding: var(--sp-8); text-align: center;
   background: var(--rm-charcoal); color: var(--rm-cream); }
-.signin-logo { width: 180px; max-width: 60vw; margin-bottom: var(--sp-2); }
+.signin-logo { width: 220px; max-width: 60vw; margin-bottom: var(--sp-2); }
 .signin-screen h1 { margin: 0; font-size: var(--fs-h2, 1.5rem); }
 .signin-sub { margin: 0 0 var(--sp-4); opacity: .8; }
 .loading { padding: var(--sp-16); text-align: center; color: var(--fg-muted); font-size: var(--fs-body-lg); }
