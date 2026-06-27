@@ -208,3 +208,62 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
   font: var(--fw-bold) var(--fs-body-sm) var(--ff-sans); letter-spacing: var(--ls-wide);
   text-transform: uppercase; transition: background var(--dur-fast) var(--ease-out); }
 .signin-out:hover { background: var(--rm-orange-dark); }
+
+/* ============================ Phones (≤640px) ========================= */
+@media (max-width: 640px) {
+  /* breathing room: trim the desktop padding everywhere */
+  main { padding: var(--sp-4) var(--sp-3); }
+
+  /* hero — keep logo + pill + avatar on one tidy row, smaller */
+  .hero { padding: var(--sp-4); }
+  .hero-top { flex-wrap: wrap; gap: var(--sp-2); }
+  .hero .logo { height: 24px; }
+  .live-pill { font-size: 9px; padding: 4px 8px; }
+  .hero h1 { font-size: clamp(20px, 7vw, 30px); margin-top: var(--sp-3); }
+  .hero .sub { font-size: var(--fs-caption); }
+
+  /* header KPI strip: 2-up, smaller numbers so long $ values don't clip */
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); gap: var(--sp-2); margin-top: var(--sp-4); }
+  .hkpi { padding: var(--sp-2) var(--sp-3); }
+  .hkpi .value { font-size: 17px; overflow-wrap: anywhere; }
+  .hkpi .note { font-size: 10px; }
+
+  /* tabs: keep ALL visible (wrap, not scroll, so History is never hidden), denser */
+  .tabs { padding: 0 var(--sp-3); }
+  .tab { padding: var(--sp-3) var(--sp-2); font-size: 12px; letter-spacing: var(--ls-wide); }
+
+  /* filter bar stacks and stays tappable */
+  .filterbar { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); padding: var(--sp-3); }
+
+  /* content grids → single column */
+  .cols-5, .cols-4, .cols-2 { grid-template-columns: 1fr; }
+  .card { padding: var(--sp-4); }
+  .card.kpi .value { font-size: clamp(24px, 8vw, 36px); }
+
+  /* wide data tables scroll horizontally INSIDE their card instead of squishing */
+  main .card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.rm { min-width: 480px; }
+  table.rm td, table.rm th { white-space: nowrap; }
+
+  /* section headings a touch smaller */
+  .section-title { font-size: var(--fs-h4); }
+
+  /* History tab: tighter padding, full-width chat bubbles */
+  .hist { padding: var(--sp-5) var(--sp-3) var(--sp-12); }
+  .hist-search { flex: 1 1 100%; }
+  .ch-row { max-width: 100%; }
+
+  /* CopilotKit chat → full-screen on phones (reinforces its built-in mobile rule) */
+  :root, body {
+    --copilot-popup-width: 100vw;
+    --copilot-popup-max-width: 100vw;
+    --copilot-popup-height: 100dvh;
+    --copilot-popup-max-height: 100dvh;
+  }
+}
+
+/* very small phones (≤400px): header KPIs stack fully */
+@media (max-width: 400px) {
+  .kpi-strip { grid-template-columns: 1fr; }
+  .hkpi .value { font-size: 20px; }
+}
