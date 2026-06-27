@@ -27,14 +27,20 @@ DEFAULT_MODEL = os.environ.get("ENRICH_MODEL", "claude-haiku-4-5-20251001")
 
 
 def campaigns_to_process(conn, *, include_unenriched: bool = True) -> list[str]:
+    # Source of campaign IDs is email_esp.stg_campaigns_report (`id`), the
+    # authoritative list Coupler maintains. The "clean" fact_campaign_sends is
+    # not populated in this warehouse (the staging->fact promotion was never
+    # built), so we read straight from staging. A campaign needs processing when
+    # it has no content row, or (when enriching) no enrichment row.
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT s.campaign_id "
-            "FROM email_esp.fact_campaign_sends s "
-            "LEFT JOIN email_esp.fact_campaign_content    c USING (campaign_id) "
-            "LEFT JOIN email_esp.fact_campaign_enrichment e USING (campaign_id) "
-            "WHERE c.campaign_id IS NULL "
-            "   OR (%s AND e.campaign_id IS NULL) "
+            "SELECT s.id "
+            "FROM email_esp.stg_campaigns_report s "
+            "LEFT JOIN email_esp.fact_campaign_content    c ON c.campaign_id = s.id "
+            "LEFT JOIN email_esp.fact_campaign_enrichment e ON e.campaign_id = s.id "
+            "WHERE s.id IS NOT NULL AND s.id <> '' "
+            "  AND (c.campaign_id IS NULL "
+            "       OR (%s AND e.campaign_id IS NULL)) "
             "ORDER BY s.send_time",
             (include_unenriched,),
         )
