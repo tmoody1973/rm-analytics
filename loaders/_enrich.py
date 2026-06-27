@@ -62,7 +62,7 @@ def validate_enrichment(raw: dict) -> dict:
     }
 
 
-def enrich_text(client, plain_text: str, *, model: str) -> dict:
+def enrich_text(client, plain_text: str, *, model: str = "claude-haiku-4-5-20251001") -> dict:
     """Run one enrichment pass; returns a validated enrichment dict."""
     resp = client.messages.create(
         model=model,

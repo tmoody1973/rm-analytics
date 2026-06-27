@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.join(ROOT, "loaders"))
 
 import pytest
 import _mailchimp as mc
+import _enrich as en
 
 
 def test_base_url_uses_datacenter_suffix():
@@ -29,9 +30,6 @@ def test_parse_content_extracts_links_and_word_count():
 def test_parse_content_handles_missing_body():
     out = mc.parse_content(None, None)
     assert out == {"plain_text": "", "html": None, "links": [], "word_count": 0}
-
-
-import _enrich as en
 
 
 def test_validate_drops_out_of_vocab_topics_and_dedups():
