@@ -66,6 +66,8 @@ _DIMENSION_COLUMNS: frozenset[str] = frozenset({
     # finance / generic dimensions
     "category", "subcategory", "restricted_yn", "frequency", "designation", "fund",
     "type", "status", "content_type", "post_type", "media_type",
+    # newsletter enrichment — closed-vocab tags, safe to enumerate
+    "primary_theme",
 })
 # Defense-in-depth: never enumerate a column whose name hints at PII/free text,
 # even if it somehow appears above.
@@ -96,6 +98,27 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
     ("dim", "stations"): "The 4 station codes: RM88 (88Nine), HYFIN, RM414 (414 Music), RLR (Rhythm Lab Radio).",
     ("dim", "brand_channels"): "Maps each social handle / GA property / email list / ad account to a station_code.",
     ("meta_organic", "fact_ig_followers_daily"): "Daily Instagram follower counts per brand page.",
+    ("email_esp", "stg_campaigns_report"): (
+        "Mailchimp campaign report — ONE ROW PER NEWSLETTER (`id` = campaign_id), Jan 2024-. "
+        "This is the authoritative campaign list AND where the PERFORMANCE metrics live: "
+        "`opens_open_rate`, `opens_unique_opens`, `clicks_click_rate`, `clicks_unique_clicks`, "
+        "`emails_sent`, `send_time`, `subject_line`. To correlate newsletter CONTENT with "
+        "performance, JOIN this table on `id = fact_campaign_enrichment.campaign_id` (the modeled "
+        "email_esp.fact_campaign_sends table is NOT populated — use this staging table)."
+    ),
+    ("email_esp", "fact_campaign_content"): (
+        "Newsletter BODY text per campaign (PK campaign_id = stg_campaigns_report.id). "
+        "`plain_text` (body), `word_count`, `links` (jsonb). Empty-body campaigns (RSS/archived/"
+        "variants) have word_count 0. For the full body of one newsletter prefer the dedicated "
+        "retrieval path over dumping plain_text via SQL."
+    ),
+    ("email_esp", "fact_campaign_enrichment"): (
+        "LLM-derived TAGS per newsletter (PK campaign_id). `content_type` (newsletter/event_promo/"
+        "fundraising_appeal/announcement/contest), `topics` (jsonb array), `primary_theme`, "
+        "`featured_artists` (jsonb). Use to ask 'what topics/themes drive opens?' by joining "
+        "stg_campaigns_report on campaign_id for the open/click rates. model='skipped-empty-body' "
+        "means there was no body to tag (tags are null)."
+    ),
 }
 
 

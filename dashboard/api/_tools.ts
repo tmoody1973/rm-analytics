@@ -4,11 +4,12 @@
  * Extracted into a helper module (Vercel ignores `_`-prefixed files in api/)
  * so the tool handlers can be unit-tested independently (Task 5).
  *
- * Four tools:
- *   get_metric   – curated metric registry (prefer this first)
- *   list_metrics – catalog of curated metrics
- *   get_schema   – allowlisted table/column schema (call before query_sql)
- *   query_sql    – read-only SQL fallback (single SELECT/WITH only)
+ * Five tools:
+ *   get_metric             – curated metric registry (prefer this first)
+ *   list_metrics           – catalog of curated metrics
+ *   get_schema             – allowlisted table/column schema (call before query_sql)
+ *   query_sql              – read-only SQL fallback (single SELECT/WITH only)
+ *   get_newsletter_content – full body + topic tags for one Mailchimp newsletter
  *
  * All handlers call process.env.API_BASE (default: https://rm-data-loader.fly.dev).
  */
@@ -151,6 +152,50 @@ On error the backend returns {detail: "..."} — this is surfaced as a readable 
   },
 });
 
+// ─────────────────────────────────────────────────── get_newsletter_content ───
+
+export const getNewsletterContentTool = defineTool({
+  name: "get_newsletter_content",
+  description: `Retrieve the full body text and topic tags of a single Radio Milwaukee email newsletter (Mailchimp campaign).
+Use this when the user wants to read, summarize, or understand what a SPECIFIC newsletter actually said —
+e.g. "summarize the latest HYFIN newsletter" or "what stories did the June newsletter feature?".
+
+For aggregate/correlation questions ACROSS many newsletters ("what topics drive opens?"), use query_sql instead:
+the tags live in email_esp.fact_campaign_enrichment and the open/click rates in email_esp.stg_campaigns_report
+(join on campaign_id = stg_campaigns_report.id).
+
+Parameters:
+  campaign_id – the Mailchimp campaign id (= email_esp.stg_campaigns_report.id). Use query_sql to find ids
+                by subject/date if you don't have one.
+
+Returns: {campaign_id, subject_line, send_time, word_count, content_type, primary_theme, topics[],
+          featured_artists[], plain_text (capped at 8000 chars), truncated}.
+On a missing/unknown id the backend returns 404 — surfaced as a readable {error}.`,
+  parameters: z.object({
+    campaign_id: z
+      .string()
+      .describe("Mailchimp campaign id (= email_esp.stg_campaigns_report.id)"),
+  }),
+  execute: async ({ campaign_id }) => {
+    const url = `${API_BASE()}/api/newsletter-content/${encodeURIComponent(campaign_id)}`;
+    const res = await fetch(url);
+    const body = await res.json() as Record<string, unknown>;
+
+    if (!res.ok) {
+      const detail = (body as { detail?: string }).detail ?? `HTTP ${res.status}`;
+      return { error: detail };
+    }
+
+    return body;
+  },
+});
+
 // ─────────────────────────────────────────────────────────── exported array ───
 
-export const ALL_TOOLS = [getMetricTool, listMetricsTool, getSchemaTool, querySqlTool];
+export const ALL_TOOLS = [
+  getMetricTool,
+  listMetricsTool,
+  getSchemaTool,
+  querySqlTool,
+  getNewsletterContentTool,
+];

@@ -26,8 +26,14 @@ vi.mock("@copilotkit/runtime/v2", () => ({
 }));
 
 // ── Import under test (after vi.mock) ────────────────────────────────────────
-const { getMetricTool, listMetricsTool, getSchemaTool, querySqlTool, ALL_TOOLS } =
-  await import("../api/_tools.js");
+const {
+  getMetricTool,
+  listMetricsTool,
+  getSchemaTool,
+  querySqlTool,
+  getNewsletterContentTool,
+  ALL_TOOLS,
+} = await import("../api/_tools.js");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,13 +86,18 @@ describe("tool name mapping", () => {
     expect(querySqlTool.name).toBe("query_sql");
   });
 
-  it("ALL_TOOLS contains exactly four tools with the correct names", () => {
-    expect(ALL_TOOLS).toHaveLength(4);
+  it("getNewsletterContentTool has name 'get_newsletter_content'", () => {
+    expect(getNewsletterContentTool.name).toBe("get_newsletter_content");
+  });
+
+  it("ALL_TOOLS contains exactly five tools with the correct names", () => {
+    expect(ALL_TOOLS).toHaveLength(5);
     const names = ALL_TOOLS.map((t) => t.name);
     expect(names).toContain("get_metric");
     expect(names).toContain("list_metrics");
     expect(names).toContain("get_schema");
     expect(names).toContain("query_sql");
+    expect(names).toContain("get_newsletter_content");
   });
 });
 
@@ -399,5 +410,52 @@ describe("API_BASE override via process.env.API_BASE", () => {
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
     // Should not produce double slash
     expect(url).toBe("https://staging.example.com/api/metrics");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getNewsletterContentTool
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("getNewsletterContentTool", () => {
+  it("GETs /api/newsletter-content/{id} with the campaign_id URL-encoded", async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      makeFetchResponse({ campaign_id: "a/b", plain_text: "hi", truncated: false })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await getNewsletterContentTool.execute({ campaign_id: "a/b" });
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit | undefined];
+    // The slash in the id must be percent-encoded so it stays a single path segment
+    expect(url).toBe("https://rm-data-loader.fly.dev/api/newsletter-content/a%2Fb");
+  });
+
+  it("returns the parsed JSON body unchanged on 200", async () => {
+    const payload = {
+      campaign_id: "31c701e699", subject_line: "Cheers to 2024 HYFIN Fam!",
+      word_count: 529, content_type: "newsletter", primary_theme: "community",
+      topics: ["community", "events"], featured_artists: ["Pharrell Williams"],
+      plain_text: "STREAM HYFIN ...", truncated: false,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(makeFetchResponse(payload)));
+
+    const result = await getNewsletterContentTool.execute({ campaign_id: "31c701e699" });
+
+    expect(result).toEqual(payload);
+  });
+
+  it("surfaces a 404 (unknown campaign) as readable {error} — NOT a thrown exception", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        makeFetchResponse({ detail: "no newsletter content for that campaign_id" }, 404)
+      )
+    );
+
+    await expect(
+      getNewsletterContentTool.execute({ campaign_id: "nope" })
+    ).resolves.toEqual({ error: "no newsletter content for that campaign_id" });
   });
 });

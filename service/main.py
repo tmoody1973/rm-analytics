@@ -55,11 +55,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from . import ask_sql_api, catalog_api, metric_api
+from . import ask_sql_api, catalog_api, metric_api, newsletter_api
 
 app.include_router(metric_api.router)
 app.include_router(ask_sql_api.router)
 app.include_router(catalog_api.router)
+app.include_router(newsletter_api.router)
 
 
 @app.get("/api/dashboard")
