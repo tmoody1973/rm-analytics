@@ -37,8 +37,8 @@ export function ChatPersistence({ threadId }) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify(payload),
-          }).catch(() => {})   // archive write is best-effort; never block the UI
-        )
+          })
+        ).catch(() => {})   // archive write is best-effort; never block the UI
       }
     }
     wasRunning.current = running
