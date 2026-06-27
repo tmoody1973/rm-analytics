@@ -78,8 +78,9 @@ const agent = new BuiltInAgent({
   // forwardSystemMessages defaults to false — client cannot inject or override instructions.
   prompt: systemPrompt,
   tools: ALL_TOOLS,
-  // Allow multi-step tool use (list → get, schema → query)
-  maxSteps: 5,
+  // Room for real multi-step analysis: get_schema → write SQL → recover from a
+  // query error → requery → synthesize. 5 was too low and cut complex answers off.
+  maxSteps: 15,
 });
 
 const runtime = new CopilotRuntime({
