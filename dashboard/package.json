@@ -3,7 +3,28 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "dev": "vite", "build": "vite build", "preview": "vite preview" },
-  "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1", "recharts": "^2.12.7" },
-  "devDependencies": { "@vitejs/plugin-react": "^4.3.4", "vite": "^5.4.10" }
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clerk/backend": "^3.8.4",
+    "@clerk/react": "^6.11.1",
+    "@copilotkit/react-core": "^1.61.2",
+    "@copilotkit/react-ui": "^1.61.2",
+    "@copilotkit/runtime": "^1.61.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@vercel/node": "^5.8.21",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.9"
+  }
 }

@@ -2,3 +2,10 @@ node_modules/
 dist/
 *.log
 .DS_Store
+.vercel
+
+# Local env (Clerk/Anthropic secrets — NEVER commit)
+.env
+.env.local
+.env.*.local
+.clerk/

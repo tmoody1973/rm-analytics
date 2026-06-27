@@ -78,6 +78,16 @@ table.rm td.num, table.rm th.num { text-align: right; font-variant-numeric: tabu
 
 footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; padding: var(--sp-5) var(--sp-8);
   font-size: var(--fs-caption); text-align: center; }
+.footer-link { color: var(--rm-cream); text-decoration: underline; text-underline-offset: 2px; }
+.footer-link:hover { opacity: .8; }
+
+/* Sign-in gate (shown to signed-out visitors) */
+.signin-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: var(--sp-3); padding: var(--sp-8); text-align: center;
+  background: var(--rm-charcoal); color: var(--rm-cream); }
+.signin-logo { width: 180px; max-width: 60vw; margin-bottom: var(--sp-2); }
+.signin-screen h1 { margin: 0; font-size: var(--fs-h2, 1.5rem); }
+.signin-sub { margin: 0 0 var(--sp-4); opacity: .8; }
 .loading { padding: var(--sp-16); text-align: center; color: var(--fg-muted); font-size: var(--fs-body-lg); }
 .note-flag { font-size: var(--fs-caption); color: var(--fg-subtle); margin-top: var(--sp-2); font-style: italic; }
 
