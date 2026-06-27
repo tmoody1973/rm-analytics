@@ -129,8 +129,16 @@ async function isAuthenticated(req: IncomingMessage): Promise<boolean> {
  * Signature: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
  */
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const pathOnly = (req.url ?? "").split("?")[0];
+
   // CORS preflight carries no Authorization header — let the runtime answer it.
   if (req.method === "OPTIONS") return nodeHandler(req, res);
+
+  // `/info` is a non-sensitive capability probe (runtime version + agent/tool
+  // names, no data). The CopilotKit client fetches it on init without auth, so
+  // allow it through. The data-bearing endpoints (agent run, where tools hit the
+  // warehouse) stay gated below.
+  if (req.method === "GET" && pathOnly.endsWith("/info")) return nodeHandler(req, res);
 
   if (!(await isAuthenticated(req))) {
     res.statusCode = 401;
