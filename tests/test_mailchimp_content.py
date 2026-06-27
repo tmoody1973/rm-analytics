@@ -63,3 +63,36 @@ def test_enrich_text_uses_injected_client_and_validates():
     out = en.enrich_text(FakeClient(), "some newsletter body", model="claude-haiku-4-5-20251001")
     assert out["content_type"] == "newsletter"
     assert out["topics"] == ["local_music"]   # 'junk' dropped
+
+
+import load_mailchimp_content as loader
+
+
+def test_load_builds_rows_and_enriches(monkeypatch):
+    calls = {"content": [], "enrich": 0, "upserts": []}
+
+    def fake_fetch(api_key, cid, session=None):
+        calls["content"].append(cid)
+        return {"html": f'<a href="https://x/{cid}">go</a>', "plain_text": f"body {cid}"}
+
+    class FakeEnrichClient: pass
+    def fake_enrich(client, text, *, model):
+        calls["enrich"] += 1
+        return {"primary_theme": "events", "topics": ["events"],
+                "content_type": "newsletter", "featured_artists": []}
+
+    def fake_bulk_upsert(conn, table, columns, rows, conflict_columns, update_columns, batch_size=5000):
+        calls["upserts"].append((table, len(rows)))
+        return len(rows)
+
+    monkeypatch.setattr(loader, "fetch_campaign_content", fake_fetch)
+    monkeypatch.setattr(loader, "enrich_text", fake_enrich)
+    monkeypatch.setattr(loader, "bulk_upsert", fake_bulk_upsert)
+
+    stats = loader.load(["c1", "c2"], api_key="k-us1", client=FakeEnrichClient(),
+                        model="m", conn=object())
+    assert stats["rows_read"] == 2
+    assert stats["rows_upserted"] == 2
+    assert stats["enriched"] == 2
+    assert ("email_esp.fact_campaign_content", 2) in calls["upserts"]
+    assert ("email_esp.fact_campaign_enrichment", 2) in calls["upserts"]
