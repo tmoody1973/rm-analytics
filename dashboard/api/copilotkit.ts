@@ -21,9 +21,9 @@ import { fileURLToPath } from "node:url";
 
 import { CopilotRuntime, BuiltInAgent, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createCopilotNodeHandler } from "@copilotkit/runtime/v2/node";
-import { verifyToken } from "@clerk/backend";
 
 import { ALL_TOOLS } from "./_tools.js";
+import { verifiedSub, isUserAllowed } from "./_authz.js";
 
 // ──────────────────────────────────────────── system prompt (server-authoritative) ───
 
@@ -103,26 +103,16 @@ const nodeHandler = createCopilotNodeHandler(fetchHandler);
 // ──────────────────────────────────────────────────────────── auth gate ───
 
 /**
- * Verify the caller holds a valid Clerk session. FAIL CLOSED: if the secret key
- * is unset or the token is missing/invalid, the request is rejected. This is the
- * real protection — gating only the UI would leave this endpoint (and the
- * warehouse tools behind it) reachable by a direct API call.
+ * Verify the caller holds a valid Clerk session AND is on the app-layer
+ * allowlist (staff domain or an explicitly allowed email — see _authz.ts).
+ * FAIL CLOSED: missing secret / token / membership → rejected. This is the real
+ * protection — gating only the UI would leave this endpoint (and the warehouse
+ * tools behind it) reachable by a direct API call.
  */
-async function isAuthenticated(req: IncomingMessage): Promise<boolean> {
-  const secretKey = process.env.CLERK_SECRET_KEY;
-  if (!secretKey) return false; // fail closed — no secret, no access
-  const header = req.headers["authorization"];
-  const token =
-    typeof header === "string" && header.startsWith("Bearer ")
-      ? header.slice(7)
-      : null;
-  if (!token) return false;
-  try {
-    await verifyToken(token, { secretKey });
-    return true;
-  } catch {
-    return false;
-  }
+async function isAuthorized(req: IncomingMessage): Promise<boolean> {
+  const sub = await verifiedSub(req);
+  if (!sub) return false;
+  return isUserAllowed(sub);
 }
 
 /**
@@ -141,10 +131,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // warehouse) stay gated below.
   if (req.method === "GET" && pathOnly.endsWith("/info")) return nodeHandler(req, res);
 
-  if (!(await isAuthenticated(req))) {
+  if (!(await isAuthorized(req))) {
     res.statusCode = 401;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Unauthorized — sign in to use the assistant." }));
+    res.end(JSON.stringify({ error: "Unauthorized — Radio Milwaukee staff/board access only." }));
     return;
   }
   return nodeHandler(req, res);
