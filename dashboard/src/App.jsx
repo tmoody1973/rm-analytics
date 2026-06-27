@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useCopilotReadable } from '@copilotkit/react-core'
-import { CopilotSidebar } from '@copilotkit/react-ui'
+import { useAgentContext, CopilotSidebar } from '@copilotkit/react-core/v2'
 import { fetchDashboard } from './api.js'
 import { HeaderKpi, money, num } from './components.jsx'
 import { FilterBar } from './filters.jsx'
@@ -24,27 +23,24 @@ export default function App() {
   // Expose the live view state to the CopilotKit agent so it can answer
   // "what am I looking at?" and "why did this move?" questions grounded
   // in the actual numbers on screen right now.
-  useCopilotReadable(
-    {
-      description: 'Current dashboard view — active tab, brand filter, date range, and visible KPIs',
-      value: {
-        activeTab: tab,
-        brandFilter: brand,
-        dateRange: range,
-        kpis: data ? {
-          revenue_ytd: h.revenue_ytd ?? null,
-          pct_to_budget: h.pct_to_budget ?? null,
-          cash_balance: h.cash_balance ?? null,
-          total_donors: h.total_donors ?? null,
-          fb_followers: h.fb_followers ?? null,
-          email_subscribers: h.email_subscribers ?? null,
-          surplus_ytd: h.surplus_ytd ?? null,
-          note: `Showing ${tab} tab${brand !== ALL ? ` filtered to ${brand}` : ', all brands'}`,
-        } : null,
-      },
+  useAgentContext({
+    description: 'Current dashboard view — active tab, brand filter, date range, and visible KPIs',
+    value: {
+      activeTab: tab,
+      brandFilter: brand,
+      dateRange: range,
+      kpis: data ? {
+        revenue_ytd: h.revenue_ytd ?? null,
+        pct_to_budget: h.pct_to_budget ?? null,
+        cash_balance: h.cash_balance ?? null,
+        total_donors: h.total_donors ?? null,
+        fb_followers: h.fb_followers ?? null,
+        email_subscribers: h.email_subscribers ?? null,
+        surplus_ytd: h.surplus_ytd ?? null,
+        note: `Showing ${tab} tab${brand !== ALL ? ` filtered to ${brand}` : ', all brands'}`,
+      } : null,
     },
-    [tab, brand, range, data]
-  )
+  })
 
   return (
     <>
@@ -90,6 +86,7 @@ export default function App() {
       </div>
 
       <CopilotSidebar
+        agentId="default"
         labels={{
           title: 'Ask the data analyst',
           initial: 'Ask about streaming, membership, audience, or revenue — every number is pulled live and cited.',
