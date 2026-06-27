@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import { CopilotRuntime, BuiltInAgent, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createCopilotNodeHandler } from "@copilotkit/runtime/v2/node";
+import { verifyToken } from "@clerk/backend";
 
 import { ALL_TOOLS } from "./_tools.js";
 
@@ -98,11 +99,45 @@ const nodeHandler = createCopilotNodeHandler(fetchHandler);
 
 // ──────────────────────────────────────────────────────────── Vercel export ───
 
+// ──────────────────────────────────────────────────────────── auth gate ───
+
+/**
+ * Verify the caller holds a valid Clerk session. FAIL CLOSED: if the secret key
+ * is unset or the token is missing/invalid, the request is rejected. This is the
+ * real protection — gating only the UI would leave this endpoint (and the
+ * warehouse tools behind it) reachable by a direct API call.
+ */
+async function isAuthenticated(req: IncomingMessage): Promise<boolean> {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  if (!secretKey) return false; // fail closed — no secret, no access
+  const header = req.headers["authorization"];
+  const token =
+    typeof header === "string" && header.startsWith("Bearer ")
+      ? header.slice(7)
+      : null;
+  if (!token) return false;
+  try {
+    await verifyToken(token, { secretKey });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Default export — Vercel Node serverless function handler.
  * Signature: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
  */
-export default function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // CORS preflight carries no Authorization header — let the runtime answer it.
+  if (req.method === "OPTIONS") return nodeHandler(req, res);
+
+  if (!(await isAuthenticated(req))) {
+    res.statusCode = 401;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Unauthorized — sign in to use the assistant." }));
+    return;
+  }
   return nodeHandler(req, res);
 }
 
