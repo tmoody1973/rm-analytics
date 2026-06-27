@@ -67,3 +67,17 @@ def test_list_threads_returns_saved_thread_newest_first():
     assert r["message_count"] == 2 and "updated_at" in r
     with psycopg.connect(_owner_dsn()) as c, c.cursor() as cur:
         cur.execute("DELETE FROM chat.threads WHERE thread_id=%s", (_TID,)); c.commit()
+
+@pytest.mark.skipif(not _db(), reason="DATABASE_URL not set")
+def test_search_finds_thread_by_message_word():
+    from service.chat_api import save_thread, search_chats, _owner_dsn
+    import psycopg
+    save_thread({
+        "thread_id": _TID, "clerk_user_id": "u", "user_email": "t@rm.org", "title": None,
+        "messages": [{"seq": 0, "role": "user", "content": "underwriting revenue by daypart"}],
+    })
+    hits = search_chats("underwriting", limit=30)
+    assert any(h["thread_id"] == _TID for h in hits)
+    assert "snippet" in next(h for h in hits if h["thread_id"] == _TID)
+    with psycopg.connect(_owner_dsn()) as c, c.cursor() as cur:
+        cur.execute("DELETE FROM chat.threads WHERE thread_id=%s", (_TID,)); c.commit()

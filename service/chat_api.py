@@ -114,9 +114,39 @@ def list_threads(limit: int = LIST_LIMIT) -> list[dict]:
             return [{k: _jsonable(v) for k, v in r.items()} for r in cur.fetchall()]
 
 
-# temporary stub — replaced in Task 4
 def search_chats(q: str, limit: int = SEARCH_LIMIT) -> list[dict]:
-    return []
+    """Full-text search over messages; returns distinct threads with a snippet.
+    websearch_to_tsquery supports quotes / OR / -term. Falls back to trigram
+    similarity on content when the tsquery yields nothing."""
+    fts = """
+        SELECT DISTINCT ON (t.thread_id)
+               t.thread_id::text, t.title, t.user_email, t.updated_at,
+               ts_headline('english', m.content, websearch_to_tsquery('english', %(q)s),
+                           'MaxFragments=1,MaxWords=18,MinWords=5') AS snippet,
+               ts_rank(m.search_tsv, websearch_to_tsquery('english', %(q)s)) AS rank
+        FROM chat.messages m JOIN chat.threads t ON t.thread_id = m.thread_id
+        WHERE m.search_tsv @@ websearch_to_tsquery('english', %(q)s)
+        ORDER BY t.thread_id, rank DESC
+    """
+    trgm = """
+        SELECT DISTINCT ON (t.thread_id)
+               t.thread_id::text, t.title, t.user_email, t.updated_at,
+               left(m.content, 160) AS snippet,
+               similarity(m.content, %(q)s) AS rank
+        FROM chat.messages m JOIN chat.threads t ON t.thread_id = m.thread_id
+        WHERE m.content %% %(q)s
+        ORDER BY t.thread_id, rank DESC
+    """
+    with psycopg.connect(_owner_dsn()) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(f"SELECT * FROM ({fts}) s ORDER BY s.rank DESC, s.updated_at DESC LIMIT %(lim)s",
+                        {"q": q, "lim": min(limit, 100)})
+            rows = cur.fetchall()
+            if not rows:
+                cur.execute(f"SELECT * FROM ({trgm}) s ORDER BY s.rank DESC, s.updated_at DESC LIMIT %(lim)s",
+                            {"q": q, "lim": min(limit, 100)})
+                rows = cur.fetchall()
+    return [{k: _jsonable(v) for k, v in r.items() if k != "rank"} for r in rows]
 
 
 @router.get("/api/chats")
