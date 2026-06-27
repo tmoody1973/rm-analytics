@@ -81,3 +81,14 @@ def test_search_finds_thread_by_message_word():
     assert "snippet" in next(h for h in hits if h["thread_id"] == _TID)
     with psycopg.connect(_owner_dsn()) as c, c.cursor() as cur:
         cur.execute("DELETE FROM chat.threads WHERE thread_id=%s", (_TID,)); c.commit()
+
+@pytest.mark.skipif(not _db(), reason="DATABASE_URL not set")
+def test_get_thread_returns_messages_in_order():
+    from service.chat_api import save_thread, get_thread, _owner_dsn
+    import psycopg
+    save_thread(_sample(3))
+    out = get_thread(_TID)
+    assert out is not None
+    assert [m["seq"] for m in out["messages"]] == [0, 1, 2]
+    with psycopg.connect(_owner_dsn()) as c, c.cursor() as cur:
+        cur.execute("DELETE FROM chat.threads WHERE thread_id=%s", (_TID,)); c.commit()

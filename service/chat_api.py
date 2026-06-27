@@ -149,6 +149,36 @@ def search_chats(q: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     return [{k: _jsonable(v) for k, v in r.items() if k != "rank"} for r in rows]
 
 
+def get_thread(thread_id: str) -> dict | None:
+    with psycopg.connect(_owner_dsn()) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT thread_id::text, title, user_email, message_count, created_at, updated_at "
+                "FROM chat.threads WHERE thread_id = %s", (thread_id,))
+            thread = cur.fetchone()
+            if not thread:
+                return None
+            cur.execute(
+                "SELECT seq, role, content, tool_calls FROM chat.messages "
+                "WHERE thread_id = %s ORDER BY seq", (thread_id,))
+            msgs = cur.fetchall()
+    return {
+        "thread": {k: _jsonable(v) for k, v in thread.items()},
+        "messages": [{k: _jsonable(v) for k, v in m.items()} for m in msgs],
+    }
+
+
+@router.get("/api/chats/{thread_id}")
+def get_chat_detail(thread_id: str) -> dict:
+    try:
+        out = get_thread(thread_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    if out is None:
+        raise HTTPException(status_code=404, detail="thread not found")
+    return out
+
+
 @router.get("/api/chats")
 def get_chats(q: str | None = None, limit: int = LIST_LIMIT) -> list[dict]:
     try:
