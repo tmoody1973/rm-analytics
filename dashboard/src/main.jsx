@@ -56,7 +56,7 @@ function TokenSync() {
 function SignInScreen() {
   return (
     <div className="signin-screen">
-      <img className="signin-logo" src="/assets/logo.png" alt="Radio Milwaukee" />
+      <img className="signin-logo" src="/assets/logo-cream.png" alt="Radio Milwaukee" />
       <h1>Radio Milwaukee Analytics</h1>
       <p className="signin-sub">Staff &amp; board sign-in</p>
       <SignIn routing="hash" />

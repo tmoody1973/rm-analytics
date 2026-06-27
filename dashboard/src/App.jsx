@@ -50,7 +50,7 @@ export default function App() {
       <div className="app">
         <header className="hero">
           <div className="hero-top">
-            <img className="logo" src="/assets/logo.png" alt="Radio Milwaukee" />
+            <img className="logo" src="/assets/logo-cream.png" alt="Radio Milwaukee" />
             <span className="live-pill"><span className="live-dot" />Live Dashboard</span>
             <div className="hero-user">
               <UserButton afterSignOutUrl="/" appearance={{ elements: { userButtonAvatarBox: { width: 34, height: 34 } } }} />
