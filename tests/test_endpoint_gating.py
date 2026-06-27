@@ -28,6 +28,7 @@ def real_auth(monkeypatch):
     "/api/metrics",
     "/api/metric/streaming_tlh",
     "/api/newsletter-content/abc123",
+    "/api/chats",                 # NEW
 ])
 def test_gated_get_returns_401_without_token(real_auth, path):
     assert client.get(path).status_code == 401

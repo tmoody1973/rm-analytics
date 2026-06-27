@@ -56,7 +56,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from . import ask_sql_api, catalog_api, metric_api, newsletter_api
+from . import ask_sql_api, catalog_api, chat_api, metric_api, newsletter_api
 
 # Assistant tool endpoints (/api/metric, /api/metrics, /api/schema, /api/ask-sql,
 # /api/newsletter-content) are called server-to-server by the Clerk-gated Vercel
@@ -68,6 +68,7 @@ app.include_router(metric_api.router, dependencies=_internal)
 app.include_router(ask_sql_api.router, dependencies=_internal)
 app.include_router(catalog_api.router, dependencies=_internal)
 app.include_router(newsletter_api.router, dependencies=_internal)
+app.include_router(chat_api.router, dependencies=_internal)
 
 
 @app.get("/api/dashboard")
