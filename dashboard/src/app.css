@@ -201,3 +201,10 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
 
 /* Clerk user button in the dark hero */
 .hero-user { margin-left: auto; display: flex; align-items: center; }
+
+/* access-denied / sign-out button on the dark auth screen */
+.signin-out { margin-top: var(--sp-2); background: var(--rm-orange); color: var(--rm-charcoal);
+  border: 0; border-radius: var(--r-pill); padding: 10px 22px; cursor: pointer;
+  font: var(--fw-bold) var(--fs-body-sm) var(--ff-sans); letter-spacing: var(--ls-wide);
+  text-transform: uppercase; transition: background var(--dur-fast) var(--ease-out); }
+.signin-out:hover { background: var(--rm-orange-dark); }

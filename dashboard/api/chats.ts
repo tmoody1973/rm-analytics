@@ -5,7 +5,7 @@
  * never holds the internal token and cannot set its own identity.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createClerkClient, verifyToken } from "@clerk/backend";
+import { verifiedSub, emailForUser, isUserAllowed } from "./_authz.js";
 
 const API_BASE = () =>
   (process.env.API_BASE ?? "https://rm-data-loader.fly.dev").replace(/\/$/, "");
@@ -21,32 +21,6 @@ export function buildFlyTarget(method: string, query: Record<string, string>): s
   return "/api/chats";
 }
 
-async function emailForUser(sub: string): Promise<string | null> {
-  const secretKey = process.env.CLERK_SECRET_KEY;
-  if (!secretKey) return null;
-  try {
-    const u = await createClerkClient({ secretKey }).users.getUser(sub);
-    const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId);
-    return primary?.emailAddress ?? u.emailAddresses[0]?.emailAddress ?? null;
-  } catch {
-    return null;   // best-effort: never block the save on a lookup failure
-  }
-}
-
-async function verifiedClaims(req: IncomingMessage): Promise<{ sub: string } | null> {
-  const secretKey = process.env.CLERK_SECRET_KEY;
-  if (!secretKey) return null;
-  const header = req.headers["authorization"];
-  const token = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) return null;
-  try {
-    const c = await verifyToken(token, { secretKey }) as Record<string, unknown>;
-    return { sub: String(c.sub) };
-  } catch {
-    return null;
-  }
-}
-
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let data = "";
@@ -56,11 +30,19 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const claims = await verifiedClaims(req);
-  if (!claims) {
+  const sub = await verifiedSub(req);
+  if (!sub) {
     res.statusCode = 401;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ error: "Unauthorized" }));
+    return;
+  }
+  // App-layer allowlist: the chat archive is staff/board-only (it holds their
+  // donor/financial analysis). Reject anyone not on the allowlist.
+  if (!(await isUserAllowed(sub))) {
+    res.statusCode = 403;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Forbidden" }));
     return;
   }
   const url = new URL(req.url ?? "", "http://x");
@@ -71,8 +53,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   if (req.method === "POST") {
     const raw = await readBody(req);
     const body = raw ? JSON.parse(raw) : {};
-    body.clerk_user_id = claims.sub;          // stamp identity from the token
-    body.user_email = await emailForUser(claims.sub);
+    body.clerk_user_id = sub;                 // stamp identity from the token
+    body.user_email = await emailForUser(sub);
     init = { method: "POST",
       headers: { "Content-Type": "application/json", ...internalHeaders() },
       body: JSON.stringify(body) };
