@@ -5,6 +5,7 @@ import { HeaderKpi, money, num } from './components.jsx'
 import { FilterBar } from './filters.jsx'
 import { ALL, DEFAULT_RANGE } from './brands.js'
 import { TABS } from './tabs.jsx'
+import { ChatPersistence } from './chat-persistence.jsx'
 
 export default function App() {
   const [data, setData] = useState(null)
@@ -12,6 +13,7 @@ export default function App() {
   const [tab, setTab] = useState('Overview')
   const [brand, setBrand] = useState(ALL)
   const [range, setRange] = useState(DEFAULT_RANGE)
+  const [threadId] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
     fetchDashboard().then(setData).catch((e) => setErr(e.message))
@@ -95,6 +97,7 @@ export default function App() {
         defaultOpen={false}
         clickOutsideToClose={false}
       />
+      <ChatPersistence threadId={threadId} />
     </>
   )
 }
