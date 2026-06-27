@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { UserButton } from '@clerk/react'
 import { useAgentContext, CopilotSidebar } from '@copilotkit/react-core/v2'
 import { fetchDashboard } from './api.js'
 import { HeaderKpi, money, num } from './components.jsx'
@@ -51,6 +52,9 @@ export default function App() {
           <div className="hero-top">
             <img className="logo" src="/assets/logo.png" alt="Radio Milwaukee" />
             <span className="live-pill"><span className="live-dot" />Live Dashboard</span>
+            <div className="hero-user">
+              <UserButton afterSignOutUrl="/" appearance={{ elements: { userButtonAvatarBox: { width: 34, height: 34 } } }} />
+            </div>
           </div>
           <h1>Executive Performance Dashboard</h1>
           <div className="sub">Board of Directors · FY2026 YTD</div>
