@@ -479,6 +479,7 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── 014_nielsen.sql        ← APPLIED — Nielsen Vital Signs (long/unpivoted)
 │   ├── 015_ig_followers.sql   ← APPLIED — meta_organic.fact_ig_followers_daily (loader blocked on token, see MOO-174)
 │   ├── 016_readonly_role.sql  ← APPLIED — rm_readonly Neon role (SELECT allowlist; funraise excluded) for assistant SQL fallback
+│   ├── 017_email_content.sql  ← APPLIED — email_esp.fact_campaign_content + fact_campaign_enrichment (newsletter body + Haiku tags)
 │   └── 100_marts.sql          ← PLANNED (Phase 12) — Cross-source views (rebuild often)
 │
 ├── loaders/                   ← Importable AND CLI-runnable
@@ -626,7 +627,8 @@ Never commit secrets. Never paste them in chat without rotating after.
 | Meta organic (FB+IG) | [ ] | Coupler | |
 | Meta ads | [ ] | Coupler | |
 | Google Analytics 4 | [ ] | Coupler | |
-| Email ESP | [ ] | Coupler | |
+| Email ESP (campaigns/lists/growth) | [x] | Coupler | `email_esp.stg_campaigns_report` 576 campaigns 2024→2026 (opens/clicks/growth). NOTE: clean `fact_campaign_sends`/`dim_lists` are EMPTY — staging→fact promotion never built; query staging directly |
+| Newsletter content + topic tags | [x] | Mailchimp API + Haiku | 576/576 body+tags in `email_esp.fact_campaign_content`/`fact_campaign_enrichment`; 57 empty-body honestly null-tagged; nightly sweep keeps current |
 | Finance — revenue history | [ ] | XLSX upload | |
 | Finance — budget history | [ ] | XLSX upload | |
 | Underwriting contracts | [ ] | XLSX upload | |
@@ -643,6 +645,10 @@ Never commit secrets. Never paste them in chat without rotating after.
 - [x] Metric service **deployed + live** — `GET /api/metric/{id}?brand=&period=&group_by=` (7 metrics; registry in `metrics/`) [MOO-172/175]. NOTE: Dockerfile now `COPY metrics/` — without it the service crashed on import (`No module named 'metrics'`); first deploy carrying the metric layer exposed this.
 - [x] Read-only role `rm_readonly` on Neon (SELECT allowlist; **funraise blocked**; read-only + 15s timeout) [MOO-173]
 - [x] Guarded SQL endpoint **deployed + live** — `POST /api/ask-sql` (single SELECT/WITH, validator + outer LIMIT wrap, runs on `rm_readonly` via Fly secret `DATABASE_URL_RO`) [MOO-173]. Verified in prod: aggregate→200, donor/DDL→400.
+- [x] Catalog endpoints **deployed + live** — `GET /api/metrics` (registry) + `GET /api/schema` (allowlisted tables/columns + low-cardinality value enumeration; funraise excluded) [MOO-176/177]. (Had been 404 until the 2026-06-27 main redeploy — catalog_api was MOO-177-only and never shipped before.)
+- [x] **CopilotKit assistant deployed + live** — Vercel `dashboard` project (https://dashboard-ten-sandy-99.vercel.app), `/api/copilotkit` runtime (Claude, server-authoritative prompt). 5 tools: get_metric, list_metrics, get_schema, query_sql, **get_newsletter_content** [MOO-177].
+- [x] Newsletter content endpoint **deployed + live** — `GET /api/newsletter-content/{campaign_id}` (rm_readonly; body capped 8k chars + truncated flag; 404 when absent). Assistant can read a newsletter AND correlate topics→opens (join `fact_campaign_enrichment` ↔ `stg_campaigns_report`).
+- [x] Mailchimp content sweep — Fly scheduled machine `mailchimp-content-nightly` (--schedule daily, `python jobs/refresh_mailchimp_content.py`); MAILCHIMP_API_KEY + ANTHROPIC_API_KEY Fly secrets set.
 - [ ] Coupler.io importers running (Meta, GA, ESP)
 - [ ] Slack alerting wired for all sources
 - [ ] All Triton scheduled queries enabled (user-side: follow `docs/triton-scheduled-queries-setup.md`)
