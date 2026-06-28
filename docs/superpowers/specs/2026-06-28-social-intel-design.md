@@ -112,8 +112,10 @@ Source: https://www.socialfetch.dev/docs/sdk + /openapi.json + /llms.json (read 
 **Backfill:** none — socialfetch returns recent posts only; the time-series accumulates from day one.
 Seed `dim_accounts` with RM's own handles + an initial competitor set (user provides).
 
-**Secret:** `SOCIALFETCH_API_KEY` — Fly secret (prod) + `~/.radio-milwaukee/.env` (local). User has
-added it to a local `.env`; confirm path the loader reads.
+**Secret:** `SOCIALFETCH_API_KEY` (an `sfk_...` key). **Confirmed present in `~/.radio-milwaukee/.env`**
+— the exact path every loader already reads (via `loaders/_common.py` / the `_owner_dsn`-style dotenv
+load), so no loader wiring needed. Still set it as a **Fly secret** (`flyctl secrets set`) for the prod
+weekly job.
 
 ## Assistant access (Approach A — no new endpoints)
 
@@ -165,5 +167,6 @@ added it to a local `.env`; confirm path the loader reads.
 ## Open items to confirm at build time
 
 - Exact initial competitor watchlist (handles per platform) — user provides.
-- Confirm which local `.env` path holds `SOCIALFETCH_API_KEY` so the loader reads it; set the Fly secret.
-- socialfetch's exact JSON field names per platform (read their REST docs while writing the normalizer).
+- socialfetch's exact JSON field names per platform (read /openapi.json + /llms.json while writing the
+  normalizer).
+- (resolved) `SOCIALFETCH_API_KEY` is in `~/.radio-milwaukee/.env`; set the Fly secret at deploy.
