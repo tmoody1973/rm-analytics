@@ -30,12 +30,15 @@ sys.path.insert(0, os.path.dirname(__file__))
 from _common import coerce_int, coerce_str  # noqa: E402
 
 import requests
+from urllib.parse import quote
 
 _BASE = "https://api.socialfetch.dev"
 _TIMEOUT_SEC = 30
 
-# Route template — confirmed against real API fixture.
-_PROFILE_ROUTE = "/v1/{platform}/profile"  # GET params: handle=<handle>
+# Route template — confirmed against the live /openapi.json (2026-06-28).
+# Handle goes in the PATH (not a query param); this profile endpoint's payload
+# already includes data.recentPosts, so one call per account covers profile+posts.
+_PROFILE_ROUTE = "/v1/{platform}/profiles/{handle}"
 
 # Raw socialfetch post_type/media_type -> our closed vocab.
 POST_TYPE_MAP: dict[str, str] = {
@@ -133,8 +136,11 @@ def fetch_account(account: dict, *, api_key: str, session=None) -> dict | None:
     """
     http = session or requests
     headers = {"x-api-key": api_key}
-    url = _BASE + _PROFILE_ROUTE.format(platform=account["platform"])
-    resp = http.get(url, headers=headers, params={"handle": account["handle"]}, timeout=_TIMEOUT_SEC)
+    url = _BASE + _PROFILE_ROUTE.format(
+        platform=account["platform"],
+        handle=quote(str(account["handle"]), safe=""),
+    )
+    resp = http.get(url, headers=headers, timeout=_TIMEOUT_SEC)
     if resp.status_code == 402:
         raise SocialfetchCreditError(f"HTTP 402 — socialfetch credits exhausted for {account['account_id']!r}")
     if resp.status_code != 200:
