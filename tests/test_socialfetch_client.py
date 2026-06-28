@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -125,6 +126,12 @@ def test_normalize_real_fixture_values():
     assert first[comments_idx] == 2
     expected_rate = round((42 + 2) / 41223, 6)
     assert first[er_idx] == pytest.approx(expected_rate)
+
+    pub_idx = sf._POST_COLUMNS.index("published_at")
+    assert isinstance(out["posts"][0][pub_idx], datetime)
+
+    type_idx = sf._POST_COLUMNS.index("post_type")
+    assert out["posts"][0][type_idx] == "carousel"
 
 
 def test_fetch_returns_none_on_private_nested():

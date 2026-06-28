@@ -137,6 +137,8 @@ def fetch_account(account: dict, *, api_key: str, session=None) -> dict | None:
     resp = http.get(url, headers=headers, params={"handle": account["handle"]}, timeout=_TIMEOUT_SEC)
     if resp.status_code == 402:
         raise SocialfetchCreditError(f"HTTP 402 — socialfetch credits exhausted for {account['account_id']!r}")
+    if resp.status_code != 200:
+        resp.raise_for_status()
     payload = resp.json()
     # Tolerant lookupStatus read: check data.lookupStatus first (real API), then top-level (tests).
     status = (
