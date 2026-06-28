@@ -75,17 +75,28 @@ def load(account: dict, *, api_key=None, enrich=True, client=None,
         )
 
         enrich_rows = []
-        if enrich and norm["captions"]:
-            new_ids = set(norm["captions"]) - _already_enriched(conn, list(norm["captions"]))
-            if new_ids and client is None:
+        if enrich:
+            all_post_ids = [row[1] for row in norm["posts"]]
+            already = _already_enriched(conn, all_post_ids)
+            new_post_ids = [pid for pid in all_post_ids if pid and pid not in already]
+            # Only construct the anthropic client when there are captioned new posts.
+            new_captioned = [pid for pid in new_post_ids if pid in norm["captions"]]
+            if new_captioned and client is None:
                 client = _anthropic_client()
-            for post_id in sorted(new_ids):
-                tags = enrich_post(client, norm["captions"][post_id], model=model)
-                tags = validate_enrichment(tags)   # defensive: stub may return raw
+            for post_id in sorted(new_post_ids):
+                if post_id in norm["captions"]:
+                    tags = enrich_post(client, norm["captions"][post_id], model=model)
+                    tags = validate_enrichment(tags)   # defensive: stub may return raw
+                    row_model = model
+                else:
+                    # Captionless post: write honest-null tags (mirrors newsletter loader's
+                    # empty-body handling) so INNER JOINs don't silently drop these posts.
+                    tags = validate_enrichment({})
+                    row_model = "skipped-empty-caption"
                 enrich_rows.append((
                     post_id, tags["content_theme"], tags["format"],
                     tags["primary_topic"], tags["hook_style"], tags["has_cta"],
-                    json.dumps(tags["featured_artists"]), model,
+                    json.dumps(tags["featured_artists"]), row_model,
                 ))
             if enrich_rows:
                 bulk_upsert(

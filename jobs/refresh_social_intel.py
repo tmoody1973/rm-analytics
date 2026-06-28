@@ -33,7 +33,7 @@ def active_accounts(conn) -> list[dict]:
 
 def run() -> dict:
     conn = get_db_connection()
-    summary = {"accounts": 0, "fetched": 0, "skipped": 0, "posts_new": 0,
+    summary = {"accounts": 0, "fetched": 0, "skipped": 0, "posts_upserted": 0,
                "enriched": 0, "failures": 0, "tag": TAG}
     try:
         accounts = active_accounts(conn)
@@ -45,7 +45,7 @@ def run() -> dict:
                     summary["skipped"] += 1
                 else:
                     summary["fetched"] += 1
-                    summary["posts_new"] += stats["posts_upserted"]
+                    summary["posts_upserted"] += stats["posts_upserted"]
                     summary["enriched"] += stats["enriched"]
             except SocialfetchCreditError:
                 # Out of credits — every later account would fail too. Abort loudly.
@@ -56,7 +56,7 @@ def run() -> dict:
                 print(f"{TAG} skipped {account['account_id']}: {exc}")
         # Shape the success message for service.slack.post_success.
         post_success(TAG, {"table": "social_intel.fact_posts",
-                           "rows_upserted": summary["posts_new"],
+                           "rows_upserted": summary["posts_upserted"],
                            "rows_read": summary["accounts"],
                            "elapsed_sec": "—"})
         return summary

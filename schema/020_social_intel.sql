@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS social_intel.fact_posts (
     saves           integer NOT NULL DEFAULT 0,
     engagement_rate numeric,
     permalink       text,
-    fetched_at      timestamptz NOT NULL DEFAULT now(),
+    fetched_at      timestamptz NOT NULL DEFAULT now(),  -- NOT in upsert update set; reflects first-fetched time, not last-fetched.
     PRIMARY KEY (account_id, post_id)
 );
 

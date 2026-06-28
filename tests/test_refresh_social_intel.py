@@ -39,7 +39,7 @@ def test_run_aggregates_and_posts_success(monkeypatch):
     out = job.run()
     assert out["tag"] == "[SOCIAL-INTEL]"
     assert out["accounts"] == 2 and out["fetched"] == 2
-    assert out["posts_new"] == 6 and out["enriched"] == 4
+    assert out["posts_upserted"] == 6 and out["enriched"] == 4
     assert posted["ok"][0] == "[SOCIAL-INTEL]"
     assert "fail" not in posted
 

@@ -52,12 +52,21 @@ def test_load_upserts_snapshot_posts_and_enriches_new(monkeypatch):
 
     assert stats["snapshots_upserted"] == 1
     assert stats["posts_upserted"] == 2
-    # only p1 has a caption -> only one LLM call
+    # p1 has a caption → one LLM call; p2 is captionless → no LLM call
     assert enrich_calls == ["New track from Klassik"]
-    assert stats["enriched"] == 1
+    # both p1 (real tags) and p2 (honest-null) produce enrichment rows
+    assert stats["enriched"] == 2
     assert "social_intel.fact_account_snapshots" in captured
     assert "social_intel.fact_posts" in captured
     assert "social_intel.fact_post_enrichment" in captured
+    # enrichment table received exactly 2 rows in a single batch
+    enrich_batches = captured["social_intel.fact_post_enrichment"]
+    assert sum(len(b) for b in enrich_batches) == 2
+    # p2 must have null tags and the sentinel model value
+    all_enrich_rows = [r for batch in enrich_batches for r in batch]
+    p2_row = next(r for r in all_enrich_rows if r[0] == "p2")
+    assert p2_row[7] == "skipped-empty-caption"  # model column (index 7)
+    assert p2_row[1] is None                      # content_theme is null
 
 
 def test_load_skips_already_enriched_posts(monkeypatch):

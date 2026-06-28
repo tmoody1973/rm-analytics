@@ -153,7 +153,9 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
         "(=(likes+comments+shares+saves)/followers-at-fetch) — it is comparable across "
         "account sizes; do NOT rank by raw likes/followers. Aggregate comment COUNTS only "
         "(no commenter data). Join dim_accounts on account_id to split us (is_owned) vs them; "
-        "join fact_post_enrichment on post_id for content tags. Recent posts only (no deep history)."
+        "join fact_post_enrichment on post_id for content tags. Recent posts only (no deep history). "
+        "IG caveat: the Instagram API reports reels with post_type='video' (not 'reel'/'short'), "
+        "so filtering reels by post_type is unreliable for Instagram."
     ),
     ("social_intel", "fact_post_enrichment"): (
         "Haiku-derived TAGS per post (PK post_id). `content_theme` (local_artist_feature/"
