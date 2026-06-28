@@ -24,7 +24,8 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# Keep in sync with the grants in schema/016 + schema/018_funraise_readonly_grant.sql.
+# Keep in sync with the grants in schema/016 + schema/018_funraise_readonly_grant.sql
+# + schema/021_social_intel_grant.sql.
 # funraise (de-identified donor data) is included; the endpoint is gated behind
 # INTERNAL_API_TOKEN and the system prompt forbids surfacing individual PII.
 ALLOWED_SCHEMAS: frozenset[str] = frozenset({

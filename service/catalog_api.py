@@ -29,7 +29,8 @@ from metrics.registry import REGISTRY  # noqa: E402
 
 router = APIRouter()
 
-# Keep in sync with schema/016 + schema/018_funraise_readonly_grant.sql.
+# Keep in sync with schema/016 + schema/018_funraise_readonly_grant.sql
+# + schema/021_social_intel_grant.sql.
 # funraise (de-identified donor data) is included so the assistant can query it;
 # the endpoint is gated behind INTERNAL_API_TOKEN and PII column VALUES are never
 # enumerated (see _SENSITIVE_NAME_BITS / _DIMENSION_COLUMNS below).
