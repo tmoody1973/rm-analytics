@@ -35,7 +35,7 @@ router = APIRouter()
 # enumerated (see _SENSITIVE_NAME_BITS / _DIMENSION_COLUMNS below).
 _ALLOWED_SCHEMAS: frozenset[str] = frozenset({
     "wms", "nielsen", "ga", "meta_organic", "meta_ads",
-    "email_esp", "finance", "dim", "marts", "funraise",
+    "email_esp", "finance", "dim", "marts", "funraise", "social_intel",
 })
 
 _ENV_PATH = Path.home() / ".radio-milwaukee" / ".env"
@@ -69,6 +69,8 @@ _DIMENSION_COLUMNS: frozenset[str] = frozenset({
     "type", "status", "content_type", "post_type", "media_type",
     # newsletter enrichment — closed-vocab tags, safe to enumerate
     "primary_theme",
+    # social_intel enrichment — closed-vocab tags, safe to enumerate
+    "content_theme", "format", "hook_style", "primary_topic",
 })
 # Defense-in-depth: never enumerate a column whose name hints at PII/free text,
 # even if it somehow appears above.
@@ -134,6 +136,30 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
     ),
     ("funraise", "dim_campaigns"): "Funraise campaign metadata (`name` = campaign name, not a donor name).",
     ("funraise", "fact_subscriptions"): "Recurring giving plans: active/churned, amount, frequency. ~$47.5K MRR.",
+    ("social_intel", "dim_accounts"): (
+        "Watchlist of social accounts we track. `is_owned`=true is Radio Milwaukee, "
+        "false is a COMPETITOR/peer. `category` (peer_station/local_media/music_brand/"
+        "aspirational), `platform`, `station_code` when owned. Join to fact_posts / "
+        "fact_account_snapshots on account_id."
+    ),
+    ("social_intel", "fact_account_snapshots"): (
+        "Profile metrics over time per (account_id, snapshot_date) — follower_count, "
+        "post_count. Weekly. follower_count is a VANITY number; compare with engagement_rate "
+        "on fact_posts, not raw followers. Non-additive — query at the snapshot grain."
+    ),
+    ("social_intel", "fact_posts"): (
+        "One row per public post per (account_id, post_id). USE `engagement_rate` "
+        "(=(likes+comments+shares+saves)/followers-at-fetch) — it is comparable across "
+        "account sizes; do NOT rank by raw likes/followers. Aggregate comment COUNTS only "
+        "(no commenter data). Join dim_accounts on account_id to split us (is_owned) vs them; "
+        "join fact_post_enrichment on post_id for content tags. Recent posts only (no deep history)."
+    ),
+    ("social_intel", "fact_post_enrichment"): (
+        "Haiku-derived TAGS per post (PK post_id). `content_theme` (local_artist_feature/"
+        "event_promo/behind_the_scenes/community/music_discovery/...), `format`, `hook_style`, "
+        "`has_cta`, `featured_artists` (jsonb). Join fact_posts on post_id to ask 'what "
+        "themes/formats drive engagement_rate?'. model='skipped-empty-caption' => no caption to tag."
+    ),
 }
 
 

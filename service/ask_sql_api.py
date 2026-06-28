@@ -29,7 +29,7 @@ router = APIRouter()
 # INTERNAL_API_TOKEN and the system prompt forbids surfacing individual PII.
 ALLOWED_SCHEMAS: frozenset[str] = frozenset({
     "wms", "nielsen", "ga", "meta_organic", "meta_ads",
-    "email_esp", "finance", "dim", "marts", "funraise",
+    "email_esp", "finance", "dim", "marts", "funraise", "social_intel",
 })
 
 MAX_ROWS = 1000

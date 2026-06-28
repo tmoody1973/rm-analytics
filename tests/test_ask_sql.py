@@ -135,3 +135,12 @@ def test_string_literal_with_limit_not_rewritten():
     out = validate_sql("SELECT 'limit 99999' AS label FROM dim.stations")
     assert "limit 99999" in out          # literal intact
     assert out.strip().lower().endswith("limit 1000")
+
+
+def test_social_intel_schema_is_allowed():
+    from service.ask_sql_api import validate_sql
+    # Should not raise — social_intel is on the allowlist.
+    out = validate_sql(
+        "SELECT account_id, engagement_rate FROM social_intel.fact_posts"
+    )
+    assert "social_intel.fact_posts" in out
