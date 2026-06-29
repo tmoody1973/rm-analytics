@@ -64,3 +64,25 @@ def test_top_pages_ranked_per_property_not_global():
         assert min(by_prop.values()) >= 2, (
             f"{k}: smallest property has {min(by_prop.values())} page(s) — {by_prop}"
         )
+
+def test_web_overview_queries_present_and_shaped():
+    p = _payload()
+    # Daily web series for KPI row + trends (client-side date-filtered).
+    daily = p["web_daily"]
+    assert daily and {"property", "date", "users", "sessions", "views"} <= set(daily[0])
+    # Traffic channels — grouped source/medium; expect the common buckets.
+    chans = p["web_channels"]
+    assert chans and {"property", "channel", "sessions", "users", "views"} <= set(chans[0])
+    names = {r["channel"] for r in chans}
+    assert {"Organic Search", "Direct"} <= names, f"channel grouping off: {names}"
+    # Geography — regions AND cities per property.
+    geo = p["web_geo"]
+    assert geo and {"property", "level", "place", "sessions"} <= set(geo[0])
+    assert {"region", "city"} <= {r["level"] for r in geo}
+    # Device split + key on-site actions.
+    dev = p["web_devices"]
+    assert dev and {"property", "device", "sessions"} <= set(dev[0])
+    ev = p["web_key_events"]
+    assert ev and {"property", "event", "count"} <= set(ev[0])
+    # Automatic GA4 events are excluded so the list is meaningful actions.
+    assert "page_view" not in {r["event"] for r in ev}

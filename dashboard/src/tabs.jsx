@@ -10,7 +10,7 @@ import {
 } from './components.jsx'
 import {
   filterByBrand, filterByDate, brandHasChannel, stationLabel, propertyLabel, rangeLabel,
-  fromStation, fromGaProperty, fromFbAccount, fromIgAccount, fromEmailList, pageTitle,
+  fromStation, fromGaProperty, fromFbAccount, fromIgAccount, fromEmailList, pageTitle, rangeCutoff,
 } from './brands.js'
 import { BrandBadge, OrgWideBadge, NoBrandData } from './filters.jsx'
 import { SECTION_INTRO, GLOSSARY, DECK } from './glossary.js'
@@ -392,43 +392,232 @@ function TopPagesTable({ rows }) {
   )
 }
 
+// --- Web-overview helpers (Digital tab) ---
+const UP = '#2f8f5b'      // green reads "up / good" at a glance
+const DOWN = RM.red
+const CHANNEL_COLOR = {
+  'Organic Search': RM.blue, Direct: RM.orange, Paid: RM.charcoal,
+  Referral: RM.blueSoft, Social: RM.charcoal70, Email: RM.red, Other: RM.charcoal70,
+}
+const fmtSecs = (s) => {
+  s = Math.round(Number(s) || 0)
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+}
+const humanizeEvent = (e) => String(e || '').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+const pctDelta = (cur, prev) => (prev ? (cur - prev) / prev : null)
+
+// KPI card with a period-over-period delta arrow (green up / red down).
+function WebKpi({ label, value, delta, note, accent }) {
+  let deltaEl = null
+  if (delta != null && isFinite(delta)) {
+    const up = delta >= 0
+    deltaEl = (
+      <div className="note" style={{ color: up ? UP : DOWN, fontWeight: 600 }}>
+        {up ? '▲' : '▼'} {Math.abs(delta * 100).toFixed(1)}%
+        <span style={{ color: 'var(--fg-subtle)', fontWeight: 400 }}> vs prior period</span>
+      </div>
+    )
+  }
+  return (
+    <div className="card kpi">
+      <div className="label">{label}</div>
+      <div className={'value' + (accent ? ' accent' : '')}>{value}</div>
+      {deltaEl}
+      {note && <div className="note">{note}</div>}
+    </div>
+  )
+}
+
+// Aggregate daily web rows into headline numbers. Daily averages divide by
+// DISTINCT dates so the ALL-brands view (two GA properties per date) isn't halved.
+function aggWeb(rows) {
+  const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0)
+  const days = new Set(rows.map((r) => r.date)).size || 1
+  const users = sum('users'), views = sum('views')
+  const sessSec = rows.length ? sum('avg_session_sec') / rows.length : 0
+  return {
+    usersPerDay: users / days, viewsPerDay: views / days,
+    pagesPerUser: users ? views / users : 0, sessSec,
+  }
+}
+
+// Split the brand-filtered daily series into the selected window and the
+// equal-length window immediately before it (for the delta). All-time has no
+// comparable prior window.
+function webWindows(daily, rangeKey) {
+  const cutoff = rangeCutoff(rangeKey)
+  if (!cutoff) return { cur: daily, prev: [] }
+  const cutMs = cutoff.getTime()
+  const prevMs = cutMs - (Date.now() - cutMs)
+  const t = (r) => new Date(r.date).getTime()
+  return {
+    cur: daily.filter((r) => t(r) >= cutMs),
+    prev: daily.filter((r) => t(r) >= prevMs && t(r) < cutMs),
+  }
+}
+
+function GeoTable({ rows, label }) {
+  if (!rows.length) return <div className="note-flag">No location data.</div>
+  return (
+    <table className="rm">
+      <thead><tr><th>{label}</th><th className="num">Sessions</th><th className="num">Users</th></tr></thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i}><td>{r.place}</td><td className="num">{num(r.sessions)}</td><td className="num">{num(r.users)}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function DigitalReach(d, f) {
-  const reach = d.combined_digital_reach[0]
-  const web = filterByDate(filterByBrand(d.web_sessions_weekly, f.brand, 'property', fromGaProperty), 'week', f.range)
   const hasWeb = brandHasChannel(f.brand, 'web')
-  const byWeek = sumBy(web, 'week', 'sessions').sort((a, b) => a.week.localeCompare(b.week))
-  const totalSessions = byWeek.reduce((a, b) => a + b.sessions, 0)
-  const latestWeek = (byWeek.at(-1) || {}).sessions
-  const avgWeek = byWeek.length ? Math.round(totalSessions / byWeek.length) : null
-  // Top pages — two windows. Brand-filtered by GA property; titles derived in the table.
+  const reach = (d.combined_digital_reach || [])[0] || {}
+
+  if (!hasWeb) {
+    return (
+      <>
+        <SectionTitle>{SECTION_INTRO.digital} <BrandBadge brand={f.brand} /></SectionTitle>
+        <NoBrandData brand={f.brand} channel="web" />
+      </>
+    )
+  }
+
+  // Daily series → KPI row + deltas + trends (honors brand + date filter).
+  const daily = filterByBrand(d.web_daily || [], f.brand, 'property', fromGaProperty)
+  const { cur, prev } = webWindows(daily, f.range)
+  const a = aggWeb(cur), b = aggWeb(prev)
+  const series = filterByDate(daily, 'date', f.range)
+    .map((r) => ({ ...r, per_user: Number(r.users) ? Number(r.views) / Number(r.users) : 0 }))
+
+  // Dimensional cards — trailing 30 days (the date filter does not apply).
+  const channels = filterByBrand(d.web_channels || [], f.brand, 'property', fromGaProperty)
+  const chanTotal = channels.reduce((s, r) => s + Number(r.sessions || 0), 0)
+  const geo = filterByBrand(d.web_geo || [], f.brand, 'property', fromGaProperty)
+  const regions = geo.filter((r) => r.level === 'region').slice(0, 8)
+  const cities = geo.filter((r) => r.level === 'city').slice(0, 8)
+  const devices = filterByBrand(d.web_devices || [], f.brand, 'property', fromGaProperty)
+  const devTotal = devices.reduce((s, r) => s + Number(r.sessions || 0), 0)
+  const events = filterByBrand(d.web_key_events || [], f.brand, 'property', fromGaProperty).slice(0, 8)
   const weeklyPages = filterByBrand(d.top_pages_weekly || [], f.brand, 'property', fromGaProperty).slice(0, 10)
   const monthlyPages = filterByBrand(d.top_pages_monthly || [], f.brand, 'property', fromGaProperty).slice(0, 10)
+
+  const x = (dt) => String(dt).slice(5)
+
   return (
     <>
       <SectionTitle>{SECTION_INTRO.digital} <BrandBadge brand={f.brand} /></SectionTitle>
+
       <div className="grid cols-4">
-        <Kpi label={`Web Sessions · ${rangeLabel(f.range)}`} value={hasWeb ? num(totalSessions) : '—'} accent
-          info={GLOSSARY.organic_traffic}
-          note={hasWeb ? 'For the selected brand + period' : 'Not measured for this brand'} />
-        <Kpi label="Avg / week" value={hasWeb ? num(avgWeek) : '—'} note="Selected period" />
-        <Kpi label="Latest week" value={hasWeb ? num(latestWeek) : '—'} note="Most recent week" />
-        <Kpi label="Org Web Sessions · 30d" value={num(reach.web_sessions_30d)} note="GA4 · org-wide" />
+        <WebKpi label={`Active Users · ${rangeLabel(f.range)}`} accent value={num(a.usersPerDay)}
+          delta={pctDelta(a.usersPerDay, b.usersPerDay)} note="daily average" />
+        <WebKpi label="Pageviews" value={num(a.viewsPerDay)}
+          delta={pctDelta(a.viewsPerDay, b.viewsPerDay)} note="daily average" />
+        <WebKpi label="Pages / User" value={a.pagesPerUser.toFixed(1)}
+          delta={pctDelta(a.pagesPerUser, b.pagesPerUser)} note="views ÷ users" />
+        <WebKpi label="Avg Session" value={fmtSecs(a.sessSec)}
+          delta={pctDelta(a.sessSec, b.sessSec)} note="time on site" />
       </div>
-      <ChartCard title="Website Sessions (weekly)">
-        {!hasWeb ? <NoBrandData brand={f.brand} channel="web" />
-          : <Lines rows={web} xKey="week" seriesKey="property" valKey="sessions" x={(w) => w?.slice(5)} nameFmt={propertyLabel} />}
-      </ChartCard>
-      {hasWeb && (
-        <div className="grid cols-2">
-          <ChartCard title="Top Pages · This Week" deck={DECK.top_pages_weekly}>
-            <TopPagesTable rows={weeklyPages} />
-          </ChartCard>
-          <ChartCard title="Top Pages · This Month" deck={DECK.top_pages_monthly}>
-            <TopPagesTable rows={monthlyPages} />
-          </ChartCard>
-        </div>
-      )}
-      <div className="note-flag">Top-pages titles are derived from the URL (hover for the full path); weekly = last 7 days, monthly = last 30. The first three counters reflect the selected brand and period; the last is the org-wide 30-day total. Facebook + Instagram live on the Social tab.</div>
+
+      <div className="subhead">Are we growing?</div>
+      <div className="grid cols-2">
+        <ChartCard title="Active Users">
+          <Lines rows={series} xKey="date" seriesKey="property" valKey="users" x={x} nameFmt={propertyLabel} />
+        </ChartCard>
+        <ChartCard title="Pageviews">
+          <Lines rows={series} xKey="date" seriesKey="property" valKey="views" x={x} nameFmt={propertyLabel} />
+        </ChartCard>
+      </div>
+
+      <div className="subhead">How engaged are visitors?</div>
+      <div className="grid cols-2">
+        <ChartCard title="Pages per User">
+          <Lines rows={series} xKey="date" seriesKey="property" valKey="per_user" x={x} nameFmt={propertyLabel} />
+        </ChartCard>
+        <ChartCard title="Avg Session Duration (sec)">
+          <Lines rows={series} xKey="date" seriesKey="property" valKey="avg_session_sec" x={x} nameFmt={propertyLabel} />
+        </ChartCard>
+      </div>
+
+      <div className="subhead">How do people find us? · last 30 days</div>
+      <div className="grid cols-2">
+        <ChartCard title="Traffic Channels">
+          {channels.length === 0 ? <div className="note-flag">No channel data.</div> : (
+            <ResponsiveContainer width="100%" height={H}>
+              <BarChart layout="vertical" data={channels} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
+                <CartesianGrid {...GRID} horizontal={false} />
+                <XAxis type="number" {...AXIS} />
+                <YAxis type="category" dataKey="channel" {...AXIS} width={110} />
+                <Tooltip {...TOOLTIP} />
+                <Bar dataKey="sessions" radius={[0, 4, 4, 0]}>
+                  {channels.map((r) => <Cell key={r.channel} fill={CHANNEL_COLOR[r.channel] || RM.charcoal70} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+        <ChartCard title="Channel Detail">
+          <table className="rm">
+            <thead><tr><th>Channel</th><th className="num">Sessions</th><th className="num">Share</th><th className="num">Views/Session</th></tr></thead>
+            <tbody>
+              {channels.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.channel}</td>
+                  <td className="num">{num(r.sessions)}</td>
+                  <td className="num">{chanTotal ? `${Math.round(100 * Number(r.sessions) / chanTotal)}%` : '—'}</td>
+                  <td className="num">{Number(r.sessions) ? (Number(r.views) / Number(r.sessions)).toFixed(1) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ChartCard>
+      </div>
+
+      <div className="subhead">What are they reading?</div>
+      <div className="grid cols-2">
+        <ChartCard title="Top Pages · This Week" deck={DECK.top_pages_weekly}><TopPagesTable rows={weeklyPages} /></ChartCard>
+        <ChartCard title="Top Pages · This Month" deck={DECK.top_pages_monthly}><TopPagesTable rows={monthlyPages} /></ChartCard>
+      </div>
+
+      <div className="subhead">Where is our audience? · last 30 days</div>
+      <div className="grid cols-2">
+        <ChartCard title="Top Regions"><GeoTable rows={regions} label="Region" /></ChartCard>
+        <ChartCard title="Top Cities"><GeoTable rows={cities} label="City" /></ChartCard>
+      </div>
+
+      <div className="subhead">Devices & on-site actions · last 30 days</div>
+      <div className="grid cols-2">
+        <ChartCard title="Devices">
+          <table className="rm">
+            <thead><tr><th>Device</th><th className="num">Sessions</th><th className="num">Share</th></tr></thead>
+            <tbody>
+              {devices.map((r, i) => (
+                <tr key={i}>
+                  <td style={{ textTransform: 'capitalize' }}>{r.device}</td>
+                  <td className="num">{num(r.sessions)}</td>
+                  <td className="num">{devTotal ? `${Math.round(100 * Number(r.sessions) / devTotal)}%` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ChartCard>
+        <ChartCard title="Top On-Site Actions">
+          <table className="rm">
+            <thead><tr><th>Action</th><th className="num">Count</th></tr></thead>
+            <tbody>
+              {events.map((r, i) => (
+                <tr key={i}><td>{humanizeEvent(r.event)}</td><td className="num">{num(r.count)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </ChartCard>
+      </div>
+
+      <div className="note-flag">
+        Active Users, Pageviews and the trends honor the brand + date filter; channels, geography,
+        devices and actions are the last 30 days. Org-wide web sessions (30d): {num(reach.web_sessions_30d)}.
+        Facebook + Instagram live on the Social tab.
+      </div>
     </>
   )
 }
