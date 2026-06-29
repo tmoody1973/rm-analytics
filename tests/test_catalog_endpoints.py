@@ -201,3 +201,34 @@ class TestGetSchema:
         col = {"name": "designation", "type": "text"}
         _enrich_distinct_values(_FakeCur(), "funraise", "fact_transactions", col)
         assert col.get("values") == ["Foundations", "Membership"]
+
+    def test_schema_catalog_includes_social_intel_in_allowed_set(self):
+        """Unit-level guard: catalog_api._ALLOWED_SCHEMAS includes social_intel."""
+        from service.catalog_api import _ALLOWED_SCHEMAS
+        assert "social_intel" in _ALLOWED_SCHEMAS
+
+    @pytest.mark.skipif(not _db_available(), reason="DATABASE_URL not set")
+    def test_social_intel_schema_present(self):
+        r = client.get("/api/schema")
+        schemas = {e["schema"] for e in r.json()}
+        assert "social_intel" in schemas, f"social_intel not found: {schemas}"
+
+    def test_enrich_allows_social_content_theme(self):
+        """Unit: content_theme IS a curated dimension and gets enumerated."""
+        from service.catalog_api import _enrich_distinct_values
+
+        class _FakeCur:
+            def execute(self, *a, **k): pass
+            def fetchall(self):
+                return [{"v": "event_promo", "n": 9}, {"v": "community", "n": 4}]
+
+        col = {"name": "content_theme", "type": "text"}
+        _enrich_distinct_values(_FakeCur(), "social_intel", "fact_post_enrichment", col)
+        assert col.get("values") == ["event_promo", "community"]
+
+    def test_enrich_does_not_enumerate_caption(self):
+        """Unit: caption is free text (PII-ish) — never enumerated."""
+        from service.catalog_api import _enrich_distinct_values
+        col = {"name": "caption", "type": "text"}
+        _enrich_distinct_values(None, "social_intel", "fact_posts", col)
+        assert "values" not in col
