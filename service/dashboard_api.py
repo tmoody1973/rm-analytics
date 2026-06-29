@@ -329,6 +329,28 @@ QUERIES: dict[str, str] = {
         GROUP BY property, event
         ORDER BY property, count DESC
     """,
+    # ── Program Director tab — streaming overview (Triton, daily grain) ─────
+    # Daily streaming series (last 365d) powers the NPR-style overview: KPI row
+    # (Listeners=CUME, Sessions=SS, Sessions/User=SS/CUME, Minutes/Session=
+    # TLH*60/SS), period-over-period deltas, and the trends — all client-side so
+    # the brand + date filter applies. CUME is non-additive: averaged per day,
+    # never summed across days. fact_daily_cume is one row per (station, date).
+    "streaming_daily": """
+        SELECT station_code, date, cume, ss, tlh, aas, tsl_minutes
+        FROM wms.fact_daily_cume
+        WHERE date >= (current_date - interval '365 days')
+        ORDER BY station_code, date
+    """,
+    # Device-family split for the latest available month (share by session starts,
+    # matching NPR's "% of sessions"). Per station.
+    "streaming_devices": """
+        SELECT station_code, device_family,
+               sum(ss) AS ss, sum(tlh) AS tlh, sum(cume) AS cume
+        FROM wms.fact_monthly_device
+        WHERE month_start = (SELECT max(month_start) FROM wms.fact_monthly_device)
+        GROUP BY station_code, device_family
+        ORDER BY station_code, ss DESC
+    """,
     # ── Development Director tab — Funraise donor queries ──────────────────
     "donor_retention_trend": """
         WITH gifts AS (
