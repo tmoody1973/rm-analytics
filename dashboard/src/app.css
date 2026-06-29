@@ -290,3 +290,20 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
   .navm-item.active { color: var(--rm-orange); border-left-color: var(--rm-orange); }
   .navm-item:active { background: rgba(247,241,219,.06); }
 }
+
+/* ---------- Start Here landing page ---------- */
+.lede { font-size: var(--fs-body-lg); color: var(--fg); line-height: 1.55; max-width: 70ch; margin: 4px 0 18px; }
+.card-note { font-size: var(--fs-body); color: var(--fg-muted); line-height: 1.5; margin: 0 0 12px; max-width: 72ch; }
+.start-list { margin: 4px 0 2px; padding-left: 18px; }
+.start-list li { font-size: var(--fs-body); color: var(--fg); line-height: 1.5; margin: 0 0 9px; max-width: 74ch; }
+.ask-group { margin-bottom: 6px; }
+.ask-group-title { font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: var(--ls-wide);
+  color: var(--fg-muted); margin: 2px 0 8px; }
+.ask-q { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left;
+  cursor: pointer; background: var(--rm-orange-tint); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin: 0 0 8px; color: var(--fg); font: inherit;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
+.ask-q:hover { border-color: var(--rm-orange); background: var(--rm-orange-soft); }
+.ask-q-text { font-size: var(--fs-body-sm); line-height: 1.35; }
+.ask-q-tag { flex: none; font-size: var(--fs-caption); color: var(--rm-orange-dark); font-weight: var(--fw-bold); white-space: nowrap; }
+.ask-q-tag.copied { color: var(--rm-orange); }
