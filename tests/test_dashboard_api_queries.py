@@ -86,3 +86,12 @@ def test_web_overview_queries_present_and_shaped():
     assert ev and {"property", "event", "count"} <= set(ev[0])
     # Automatic GA4 events are excluded so the list is meaningful actions.
     assert "page_view" not in {r["event"] for r in ev}
+
+def test_streaming_overview_queries_present_and_shaped():
+    p = _payload()
+    daily = p["streaming_daily"]
+    assert daily and {"station_code", "date", "cume", "ss", "tlh"} <= set(daily[0])
+    # All four streaming brands present in the daily series.
+    assert {"RM88", "HYFIN", "RM414", "RLR"} <= {r["station_code"] for r in daily}
+    dev = p["streaming_devices"]
+    assert dev and {"station_code", "device_family", "ss"} <= set(dev[0])
