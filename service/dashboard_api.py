@@ -190,29 +190,42 @@ QUERIES: dict[str, str] = {
     # Top pages for the Digital tab — two windows (weekly = trailing 7d,
     # monthly = trailing 30d). Page TITLES are derived from the slug in the
     # frontend (ga.dim_pages is empty); SQL returns path + volume + quality.
+    # Top-N is PER PROPERTY (window function), not global: the dashboard filters
+    # these rows by brand client-side, and a global LIMIT would starve a smaller
+    # property (e.g. HYFIN, ~21x less traffic than radiomilwaukee.org) down to the
+    # one page that cracks the combined top list. Per-property gives each brand
+    # its own top 15.
     "top_pages_weekly": """
-        SELECT account__property_name AS property,
-               page__page_path AS page_path,
-               sum(engagement__views) AS views,
-               sum(acquisition__total_users) AS users,
-               round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s
-        FROM ga.stg_pages_daily
-        WHERE report__date >= (current_date - interval '7 days')
-        GROUP BY property, page_path
-        ORDER BY views DESC
-        LIMIT 15
+        WITH ranked AS (
+            SELECT account__property_name AS property,
+                   page__page_path AS page_path,
+                   sum(engagement__views) AS views,
+                   sum(acquisition__total_users) AS users,
+                   round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s,
+                   row_number() OVER (PARTITION BY account__property_name ORDER BY sum(engagement__views) DESC) AS rn
+            FROM ga.stg_pages_daily
+            WHERE report__date >= (current_date - interval '7 days')
+            GROUP BY property, page_path
+        )
+        SELECT property, page_path, views, users, avg_engagement_s
+        FROM ranked WHERE rn <= 15
+        ORDER BY property, views DESC
     """,
     "top_pages_monthly": """
-        SELECT account__property_name AS property,
-               page__page_path AS page_path,
-               sum(engagement__views) AS views,
-               sum(acquisition__total_users) AS users,
-               round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s
-        FROM ga.stg_pages_daily
-        WHERE report__date >= (current_date - interval '30 days')
-        GROUP BY property, page_path
-        ORDER BY views DESC
-        LIMIT 15
+        WITH ranked AS (
+            SELECT account__property_name AS property,
+                   page__page_path AS page_path,
+                   sum(engagement__views) AS views,
+                   sum(acquisition__total_users) AS users,
+                   round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s,
+                   row_number() OVER (PARTITION BY account__property_name ORDER BY sum(engagement__views) DESC) AS rn
+            FROM ga.stg_pages_daily
+            WHERE report__date >= (current_date - interval '30 days')
+            GROUP BY property, page_path
+        )
+        SELECT property, page_path, views, users, avg_engagement_s
+        FROM ranked WHERE rn <= 15
+        ORDER BY property, views DESC
     """,
     # ── Development Director tab — Funraise donor queries ──────────────────
     "donor_retention_trend": """
