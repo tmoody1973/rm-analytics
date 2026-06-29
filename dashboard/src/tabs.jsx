@@ -441,6 +441,19 @@ function aggWeb(rows) {
   }
 }
 
+// Streaming daily aggregates — Listeners (avg daily CUME; non-additive, so it is
+// averaged not summed), Sessions (avg daily SS), Sessions/User (SS÷CUME), and
+// Minutes/Session (TLH×60÷SS). Matches the NPR streaming-overview definitions.
+function aggStreaming(rows) {
+  const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0)
+  const days = new Set(rows.map((r) => r.date)).size || 1
+  const cume = sum('cume'), ss = sum('ss'), tlh = sum('tlh')
+  return {
+    listenersPerDay: cume / days, sessionsPerDay: ss / days,
+    sessPerUser: cume ? ss / cume : 0, minPerSession: ss ? tlh * 60 / ss : 0,
+  }
+}
+
 // Split the brand-filtered daily series into the selected window and the
 // equal-length window immediately before it (for the delta). All-time has no
 // comparable prior window.
@@ -935,34 +948,40 @@ function ProgramDirector(d, f) {
     )
   }
 
-  // Step 2: Headline KPIs — from tlh_by_station (monthly), pick latest month per station
-  const tlhRows = filterByBrand(d.tlh_by_station || [], f.brand, 'station_code', fromStation)
-  // Get the most recent month's row(s)
-  const latestMonth = tlhRows.reduce((m, r) => (r.month > m ? r.month : m), '')
-  const latestTlh = tlhRows.filter((r) => r.month === latestMonth)
-  const totalTlh = latestTlh.reduce((a, r) => a + Number(r.tlh || 0), 0)
-  const totalAas = latestTlh.reduce((a, r) => a + Number(r.aas || 0), 0)
-  const totalCume = latestTlh.reduce((a, r) => a + Number(r.cume || 0), 0)
-  // TSL: use latest month's tsl_minutes from tsl_trend if available, else from tlh_by_station
-  const tslRows = filterByBrand(d.tsl_trend || [], f.brand, 'station_code', fromStation)
-  const latestTslMonth = tslRows.reduce((m, r) => (r.month > m ? r.month : m), '')
-  const latestTslRows = tslRows.filter((r) => r.month === latestTslMonth)
-  const avgTslMin = latestTslRows.length
-    ? latestTslRows.reduce((a, r) => a + Number(r.tsl_minutes || 0), 0) / latestTslRows.length
-    : null
-  const fmtTsl = (m) => (m == null ? '—' : `${Math.floor(m)}m ${Math.round((m % 1) * 60)}s`)
+  // Streaming overview (NPR-style) — daily series powers the KPI row, deltas, and
+  // trends; honors the brand + date filter. CUME is averaged, never summed.
+  const sd = filterByBrand(d.streaming_daily || [], f.brand, 'station_code', fromStation)
+  const { cur, prev } = webWindows(sd, f.range)
+  const a = aggStreaming(cur), b = aggStreaming(prev)
+  const x = (dt) => String(dt).slice(5)
+  const sSeries = filterByDate(sd, 'date', f.range).map((r) => ({
+    ...r,
+    per_user: Number(r.cume) ? Number(r.ss) / Number(r.cume) : 0,
+    min_session: Number(r.ss) ? Number(r.tlh) * 60 / Number(r.ss) : 0,
+  }))
+  // Listening by brand — TLH share across stations over the window (most useful
+  // for All Brands; one row when a single brand is selected).
+  const brandMix = Object.values(cur.reduce((acc, r) => {
+    acc[r.station_code] = acc[r.station_code] || { station_code: r.station_code, tlh: 0 }
+    acc[r.station_code].tlh += Number(r.tlh || 0)
+    return acc
+  }, {})).sort((p, q) => q.tlh - p.tlh)
+  const brandMixTotal = brandMix.reduce((s, r) => s + r.tlh, 0) || 1
+  // Device-family share, latest month — aggregate across the brand's station(s).
+  const devAgg = Object.values(
+    filterByBrand(d.streaming_devices || [], f.brand, 'station_code', fromStation)
+      .filter((r) => r.device_family && String(r.device_family).trim())
+      .reduce((acc, r) => {
+        acc[r.device_family] = acc[r.device_family] || { device_family: r.device_family, ss: 0 }
+        acc[r.device_family].ss += Number(r.ss || 0)
+        return acc
+      }, {})
+  ).sort((p, q) => q.ss - p.ss)
+  const devTotalSs = devAgg.reduce((s, r) => s + r.ss, 0) || 1
 
-  // Step 3: Daypart AAS rows (passed to shared DaypartAas component)
+  // Daypart AAS + hour grid — period-agnostic depth, kept below the overview.
   const daypartRows = filterByBrand(d.daypart_aas || [], f.brand, 'station_code', fromStation)
-
-  // Step 4: Hour grid — period-agnostic
   const hourGridRows = filterByBrand(d.hourly_grid || [], f.brand, 'station_code', fromStation)
-
-  // Step 5: TSL trend — filtered by brand + date
-  const tslTrend = filterByDate(tslRows, 'month', f.range)
-
-  // Step 6: TLH/AAS trend — from tlh_by_station, filtered by brand + date
-  const tlhTrend = filterByDate(tlhRows, 'month', f.range)
 
   // Step 7: Nielsen — only if brand has nielsen
   const hasNielsen = brandHasChannel(f.brand, 'nielsen')
@@ -983,16 +1002,16 @@ function ProgramDirector(d, f) {
         {SECTION_INTRO.program_director} <BrandBadge brand={f.brand} />
       </SectionTitle>
 
-      {/* Step 2: Headline KPIs */}
+      {/* NPR-style streaming KPI row — daily averages with period-over-period deltas */}
       <div className="grid cols-4">
-        <Kpi label="TLH (latest month)" value={num(totalTlh || null)} accent info={GLOSSARY.tlh}
-          note={latestMonth ? latestMonth.slice(0, 7) : 'No data'} />
-        <Kpi label="AAS (latest month)" value={num(totalAas || null)} info={GLOSSARY.aas}
-          note={latestMonth ? latestMonth.slice(0, 7) : 'No data'} />
-        <Kpi label="CUME (latest month)" value={num(totalCume || null)} info={GLOSSARY.cume}
-          note={latestMonth ? latestMonth.slice(0, 7) : 'No data'} />
-        <Kpi label="Avg TSL (latest month)" value={fmtTsl(avgTslMin)} info={GLOSSARY.tsl}
-          note={latestTslMonth ? latestTslMonth.slice(0, 7) : 'No data'} />
+        <WebKpi label={`Listeners · ${rangeLabel(f.range)}`} accent value={num(a.listenersPerDay)}
+          delta={pctDelta(a.listenersPerDay, b.listenersPerDay)} note="daily average (cume)" />
+        <WebKpi label="Sessions" value={num(a.sessionsPerDay)}
+          delta={pctDelta(a.sessionsPerDay, b.sessionsPerDay)} note="daily average (starts)" />
+        <WebKpi label="Sessions / User" value={a.sessPerUser.toFixed(1)}
+          delta={pctDelta(a.sessPerUser, b.sessPerUser)} note="starts ÷ cume" />
+        <WebKpi label="Minutes / Session" value={`${Math.round(a.minPerSession)} min`}
+          delta={pctDelta(a.minPerSession, b.minPerSession)} note="listening ÷ sessions" />
       </div>
 
       {/* Step 3: Daypart AAS — shared DaypartAas component */}
@@ -1004,43 +1023,65 @@ function ProgramDirector(d, f) {
         <div className="note-flag">365-day average profile — date filter does not apply. Brand filter applies.</div>
       </ChartCard>
 
-      {/* Step 5: TSL trend */}
-      <ChartCard title="Time Spent Listening — Monthly Trend" deck={DECK.tsl_trend}>
-        {tslTrend.length === 0 ? (
-          <div className="note-flag">No TSL trend data for this selection.</div>
-        ) : (
-          <Lines rows={tslTrend} xKey="month" seriesKey="station_code" valKey="tsl_minutes"
-            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
-        )}
+      {/* NPR-style daily trends */}
+      <div className="subhead">Are people listening?</div>
+      <div className="grid cols-2">
+        <ChartCard title="Listeners (daily)" info={GLOSSARY.cume}>
+          <Lines rows={sSeries} xKey="date" seriesKey="station_code" valKey="cume" x={x} nameFmt={stationLabel} />
+        </ChartCard>
+        <ChartCard title="Sessions (daily)">
+          <Lines rows={sSeries} xKey="date" seriesKey="station_code" valKey="ss" x={x} nameFmt={stationLabel} />
+        </ChartCard>
+      </div>
+      <ChartCard title="Total Listening Hours (daily)" info={GLOSSARY.tlh}>
+        <Lines rows={sSeries} xKey="date" seriesKey="station_code" valKey="tlh" x={x} nameFmt={stationLabel} />
       </ChartCard>
 
-      {/* Step 6: TLH/AAS/CUME trends */}
-      <ChartCard title="Total Listening Hours — Monthly Trend">
-        {tlhTrend.length === 0 ? (
-          <div className="note-flag">No TLH data for this selection.</div>
-        ) : (
-          <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="tlh"
-            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
-        )}
-      </ChartCard>
+      <div className="subhead">How engaged are listeners?</div>
+      <div className="grid cols-2">
+        <ChartCard title="Sessions per User">
+          <Lines rows={sSeries} xKey="date" seriesKey="station_code" valKey="per_user" x={x} nameFmt={stationLabel} />
+        </ChartCard>
+        <ChartCard title="Minutes per Session">
+          <Lines rows={sSeries} xKey="date" seriesKey="station_code" valKey="min_session" x={x} nameFmt={stationLabel} />
+        </ChartCard>
+      </div>
 
-      <ChartCard title="Average Active Sessions — Monthly Trend" info={GLOSSARY.aas}>
-        {tlhTrend.length === 0 ? (
-          <div className="note-flag">No AAS data for this selection.</div>
-        ) : (
-          <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="aas"
-            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
-        )}
-      </ChartCard>
-
-      <ChartCard title="Cume — Monthly Trend" info={GLOSSARY.cume}>
-        {tlhTrend.length === 0 ? (
-          <div className="note-flag">No CUME data for this selection.</div>
-        ) : (
-          <Lines rows={tlhTrend} xKey="month" seriesKey="station_code" valKey="cume"
-            x={(m) => m?.slice(0, 7)} nameFmt={stationLabel} />
-        )}
-      </ChartCard>
+      <div className="subhead">Listening mix · {rangeLabel(f.range)}</div>
+      <div className="grid cols-2">
+        <ChartCard title="Listening by Brand" info={GLOSSARY.tlh}>
+          {brandMix.length === 0 ? <div className="note-flag">No data for this selection.</div> : (
+            <table className="rm">
+              <thead><tr><th>Brand</th><th className="num">Listening Hours</th><th className="num">Share</th></tr></thead>
+              <tbody>
+                {brandMix.map((r, i) => (
+                  <tr key={i}>
+                    <td>{stationLabel(r.station_code)}</td>
+                    <td className="num">{num(r.tlh)}</td>
+                    <td className="num">{Math.round(100 * r.tlh / brandMixTotal)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ChartCard>
+        <ChartCard title="Devices · latest month">
+          {devAgg.length === 0 ? <div className="note-flag">No device data.</div> : (
+            <table className="rm">
+              <thead><tr><th>Device</th><th className="num">Sessions</th><th className="num">Share</th></tr></thead>
+              <tbody>
+                {devAgg.map((r, i) => (
+                  <tr key={i}>
+                    <td>{r.device_family}</td>
+                    <td className="num">{num(r.ss)}</td>
+                    <td className="num">{Math.round(100 * r.ss / devTotalSs)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ChartCard>
+      </div>
 
       {/* Step 7: Nielsen block */}
       {hasNielsen && (
