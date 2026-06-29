@@ -14,6 +14,7 @@ import {
 } from './brands.js'
 import { BrandBadge, OrgWideBadge, NoBrandData } from './filters.jsx'
 import { SECTION_INTRO, GLOSSARY, DECK } from './glossary.js'
+import { StartHere } from './start-here.jsx'
 
 const H = 300
 const stationColor = (s) => (s === 'RM88' ? RM.orange : s === 'HYFIN' ? RM.blue : RM.charcoal70)
@@ -1328,6 +1329,7 @@ function Development(d, f) {
 // They are intentionally NOT listed as TABS entries.
 
 export const TABS = {
+  'Start Here': () => <StartHere />,
   Overview,
   'Program Director': ProgramDirector,
   Underwriting: UnderwritingTab,

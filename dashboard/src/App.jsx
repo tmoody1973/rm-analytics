@@ -11,7 +11,7 @@ import { ChatPersistence } from './chat-persistence.jsx'
 export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
-  const [tab, setTab] = useState('Overview')
+  const [tab, setTab] = useState('Start Here')
   const [navOpen, setNavOpen] = useState(false)   // mobile section-switcher
   const [brand, setBrand] = useState(ALL)
   const [range, setRange] = useState(DEFAULT_RANGE)
