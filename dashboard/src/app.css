@@ -307,3 +307,7 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
 .ask-q-text { font-size: var(--fs-body-sm); line-height: 1.35; }
 .ask-q-tag { flex: none; font-size: var(--fs-caption); color: var(--rm-orange-dark); font-weight: var(--fw-bold); white-space: nowrap; }
 .ask-q-tag.copied { color: var(--rm-orange); }
+
+/* ---------- Section sub-headers (e.g. Digital tab "How do people find us?") ---------- */
+.subhead { font-family: var(--ff-display); font-size: 1.15rem; font-weight: var(--fw-bold);
+  color: var(--fg); margin: 26px 0 8px; }
