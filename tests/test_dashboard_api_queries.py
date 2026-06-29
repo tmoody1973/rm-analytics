@@ -40,6 +40,27 @@ def test_top_pages_weekly_and_monthly_shape():
         assert rows, f"{k} empty"
         r = rows[0]
         # property for brand filtering + the four displayed metrics/keys.
-        assert {"property", "page_path", "views", "users", "avg_engagement_s"} <= set(r), (
+        assert {"property", "page_path", "users", "avg_engagement_s"} <= set(r) and "views" in r, (
             f"{k} missing columns: got {sorted(r)}"
+        )
+
+def test_top_pages_ranked_per_property_not_global():
+    # Regression guard: top-N must be PER PROPERTY (window function), not a global
+    # LIMIT. The dashboard filters these rows by brand client-side, so a global cap
+    # starves the smaller property (HYFIN) down to ~1 page. With per-property
+    # ranking both GA properties appear, and the smaller one gets several pages.
+    p = _payload()
+    for k in ("top_pages_weekly", "top_pages_monthly"):
+        rows = p[k]
+        by_prop = {}
+        for r in rows:
+            by_prop.setdefault(r["property"], 0)
+            by_prop[r["property"]] += 1
+        assert len(by_prop) >= 2, (
+            f"{k}: expected >=2 GA properties, got {by_prop} — global LIMIT regression?"
+        )
+        # The smaller property should get more than the single page the old global
+        # query left it with.
+        assert min(by_prop.values()) >= 2, (
+            f"{k}: smallest property has {min(by_prop.values())} page(s) — {by_prop}"
         )
