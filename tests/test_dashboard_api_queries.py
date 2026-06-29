@@ -32,3 +32,14 @@ def test_tsl_trend_brandable():
 def test_top_web_content_brandable():
     rows = _payload()["top_web_content"]
     assert rows and "property" in rows[0] and "views" in rows[0]
+
+def test_top_pages_weekly_and_monthly_shape():
+    p = _payload()
+    for k in ("top_pages_weekly", "top_pages_monthly"):
+        rows = p[k]
+        assert rows, f"{k} empty"
+        r = rows[0]
+        # property for brand filtering + the four displayed metrics/keys.
+        assert {"property", "page_path", "views", "users", "avg_engagement_s"} <= set(r), (
+            f"{k} missing columns: got {sorted(r)}"
+        )

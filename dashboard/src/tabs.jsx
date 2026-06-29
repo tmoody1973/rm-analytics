@@ -10,7 +10,7 @@ import {
 } from './components.jsx'
 import {
   filterByBrand, filterByDate, brandHasChannel, stationLabel, propertyLabel, rangeLabel,
-  fromStation, fromGaProperty, fromFbAccount, fromIgAccount, fromEmailList,
+  fromStation, fromGaProperty, fromFbAccount, fromIgAccount, fromEmailList, pageTitle,
 } from './brands.js'
 import { BrandBadge, OrgWideBadge, NoBrandData } from './filters.jsx'
 import { SECTION_INTRO, GLOSSARY, DECK } from './glossary.js'
@@ -360,6 +360,37 @@ function Financial(d, f) {
 }
 
 // ---------- DIGITAL REACH (web) ----------
+// Top-pages table: derived title (raw path on hover) + views/users/avg engagement.
+// Views = reach, engagement time = whether they stayed — both, not just volume.
+function TopPagesTable({ rows }) {
+  if (!rows.length) return <div className="note-flag">No page data for this selection.</div>
+  return (
+    <table className="rm">
+      <thead>
+        <tr>
+          <th>Page</th>
+          <th className="num">Views</th>
+          <th className="num">Users</th>
+          <th className="num">Avg Eng.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i}>
+            <td title={r.page_path}
+              style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {pageTitle(r.page_path)}
+            </td>
+            <td className="num">{num(r.views)}</td>
+            <td className="num">{num(r.users)}</td>
+            <td className="num">{r.avg_engagement_s != null ? `${Math.round(r.avg_engagement_s)}s` : '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function DigitalReach(d, f) {
   const reach = d.combined_digital_reach[0]
   const web = filterByDate(filterByBrand(d.web_sessions_weekly, f.brand, 'property', fromGaProperty), 'week', f.range)
@@ -368,6 +399,9 @@ function DigitalReach(d, f) {
   const totalSessions = byWeek.reduce((a, b) => a + b.sessions, 0)
   const latestWeek = (byWeek.at(-1) || {}).sessions
   const avgWeek = byWeek.length ? Math.round(totalSessions / byWeek.length) : null
+  // Top pages — two windows. Brand-filtered by GA property; titles derived in the table.
+  const weeklyPages = filterByBrand(d.top_pages_weekly || [], f.brand, 'property', fromGaProperty).slice(0, 10)
+  const monthlyPages = filterByBrand(d.top_pages_monthly || [], f.brand, 'property', fromGaProperty).slice(0, 10)
   return (
     <>
       <SectionTitle>{SECTION_INTRO.digital} <BrandBadge brand={f.brand} /></SectionTitle>
@@ -383,7 +417,17 @@ function DigitalReach(d, f) {
         {!hasWeb ? <NoBrandData brand={f.brand} channel="web" />
           : <Lines rows={web} xKey="week" seriesKey="property" valKey="sessions" x={(w) => w?.slice(5)} nameFmt={propertyLabel} />}
       </ChartCard>
-      <div className="note-flag">The first three counters reflect the selected brand and period; the last is the org-wide 30-day total. Facebook + Instagram live on the Social tab.</div>
+      {hasWeb && (
+        <div className="grid cols-2">
+          <ChartCard title="Top Pages · This Week" deck={DECK.top_pages_weekly}>
+            <TopPagesTable rows={weeklyPages} />
+          </ChartCard>
+          <ChartCard title="Top Pages · This Month" deck={DECK.top_pages_monthly}>
+            <TopPagesTable rows={monthlyPages} />
+          </ChartCard>
+        </div>
+      )}
+      <div className="note-flag">Top-pages titles are derived from the URL (hover for the full path); weekly = last 7 days, monthly = last 30. The first three counters reflect the selected brand and period; the last is the org-wide 30-day total. Facebook + Instagram live on the Social tab.</div>
     </>
   )
 }

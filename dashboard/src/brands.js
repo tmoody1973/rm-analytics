@@ -32,6 +32,37 @@ export const propertyLabel = (name) => {
   return b ? brandLabel(b) : name
 }
 
+// Derive a readable page title from a GA4 URL path. There are no real titles in
+// the warehouse (ga.dim_pages is empty), so we build a label from the slug: take
+// the last meaningful segment, drop a leading ISO date, hyphens -> spaces,
+// title-case, then apply a few known-acronym/brand fixups. Imperfect by design —
+// a human label beats a raw /events/2026-.../foo path for non-technical readers.
+const PAGE_TITLE_OVERRIDES = { '/': 'Homepage', '': 'Homepage' }
+const PAGE_WORD_FIXUPS = {
+  '88nine': '88Nine', hyfin: 'HYFIN', rlr: 'RLR', npr: 'NPR', dj: 'DJ',
+  ep: 'EP', faq: 'FAQ', tv: 'TV', us: 'US',
+}
+const _ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+export function pageTitle(path) {
+  if (path == null) return 'Untitled'
+  const clean = String(path).split('?')[0].split('#')[0]
+  if (PAGE_TITLE_OVERRIDES[clean] !== undefined) return PAGE_TITLE_OVERRIDES[clean]
+  const segments = clean.split('/').filter(Boolean)
+  if (!segments.length) return 'Homepage'
+  // A bare trailing date is noise — fall back to the segment before it.
+  let slug = segments[segments.length - 1]
+  if (_ISO_DATE.test(slug) && segments.length > 1) slug = segments[segments.length - 2]
+  // Strip a date that prefixes the slug (e.g. 2026-06-19-headline).
+  slug = slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')
+  const words = slug.split('-').filter(Boolean).map((w) => {
+    const lower = w.toLowerCase()
+    if (PAGE_WORD_FIXUPS[lower]) return PAGE_WORD_FIXUPS[lower]
+    return w.charAt(0).toUpperCase() + w.slice(1)
+  })
+  return words.join(' ') || 'Homepage'
+}
+
 export function brandHasChannel(brandKey, channel) {
   if (brandKey === ALL) return true
   const b = BRANDS.find((x) => x.key === brandKey)
