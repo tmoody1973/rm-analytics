@@ -227,6 +227,108 @@ QUERIES: dict[str, str] = {
         FROM ranked WHERE rn <= 15
         ORDER BY property, views DESC
     """,
+    # ── Digital tab — web overview (GA4 staging) ───────────────────────────
+    # Daily web series (last 365d) powers the KPI row, period-over-period
+    # deltas, and the growth/engagement trends — all derived client-side so the
+    # global date filter applies. Per (property, date).
+    "web_daily": """
+        SELECT account__property_name AS property,
+               report__date AS date,
+               sum(acquisition__total_users) AS users,
+               sum(acquisition__new_users) AS new_users,
+               sum(engagement__sessions) AS sessions,
+               sum(engagement__engaged_sessions) AS engaged_sessions,
+               sum(engagement__views) AS views,
+               round(avg(NULLIF(session__average_session_duration, 0))::numeric, 1) AS avg_session_sec
+        FROM ga.stg_sessions_daily
+        WHERE report__date >= (current_date - interval '365 days')
+        GROUP BY property, report__date
+        ORDER BY property, report__date
+    """,
+    # Traffic channels — GA4-style grouping of source/medium. Trailing 30d
+    # (dimensional; the date filter does not apply — note it in the UI).
+    "web_channels": """
+        SELECT account__property_name AS property,
+               CASE
+                 WHEN session__session_source___medium ILIKE '%email%' THEN 'Email'
+                 WHEN session__session_source___medium ILIKE '%cpc%'
+                      OR session__session_source___medium ILIKE '%/ paid%'
+                      OR session__session_source___medium ILIKE '%ppc%' THEN 'Paid'
+                 WHEN session__session_source___medium ILIKE '%organic%' THEN 'Organic Search'
+                 WHEN session__session_source___medium ILIKE '(direct)%' THEN 'Direct'
+                 WHEN session__session_source___medium ILIKE 'fb %'
+                      OR session__session_source___medium ILIKE 'facebook%'
+                      OR session__session_source___medium ILIKE '%instagram%'
+                      OR session__session_source___medium ILIKE '%t.co%'
+                      OR session__session_source___medium ILIKE '%/twitter%'
+                      OR session__session_source___medium ILIKE '%linkedin%'
+                      OR session__session_source___medium ILIKE '%youtube%'
+                      OR session__session_source___medium ILIKE '%reddit%' THEN 'Social'
+                 WHEN session__session_source___medium ILIKE '%referral%' THEN 'Referral'
+                 ELSE 'Other'
+               END AS channel,
+               sum(engagement__sessions) AS sessions,
+               sum(acquisition__total_users) AS users,
+               sum(engagement__views) AS views
+        FROM ga.stg_sessions_daily
+        WHERE report__date >= (current_date - interval '30 days')
+        GROUP BY property, channel
+        ORDER BY property, sessions DESC
+    """,
+    # Geography — top 10 regions + top 10 cities per property, trailing 30d.
+    "web_geo": """
+        WITH agg AS (
+            SELECT account__property_name AS property, 'region' AS level,
+                   audience__region AS place,
+                   sum(engagement__sessions) AS sessions,
+                   sum(acquisition__total_users) AS users,
+                   sum(engagement__views) AS views
+            FROM ga.stg_geo_daily
+            WHERE report__date >= (current_date - interval '30 days')
+              AND audience__region IS NOT NULL AND audience__region <> '' AND audience__region <> '(not set)'
+            GROUP BY account__property_name, audience__region
+            UNION ALL
+            SELECT account__property_name, 'city', audience__city,
+                   sum(engagement__sessions), sum(acquisition__total_users), sum(engagement__views)
+            FROM ga.stg_geo_daily
+            WHERE report__date >= (current_date - interval '30 days')
+              AND audience__city IS NOT NULL AND audience__city <> '' AND audience__city <> '(not set)'
+            GROUP BY account__property_name, audience__city
+        ),
+        ranked AS (
+            SELECT property, level, place, sessions, users, views,
+                   row_number() OVER (PARTITION BY property, level ORDER BY sessions DESC) AS rn
+            FROM agg
+        )
+        SELECT property, level, place, sessions, users, views
+        FROM ranked WHERE rn <= 10
+        ORDER BY property, level, sessions DESC
+    """,
+    # Device split — trailing 30d.
+    "web_devices": """
+        SELECT account__property_name AS property,
+               audience__device_category AS device,
+               sum(engagement__sessions) AS sessions,
+               sum(acquisition__total_users) AS users
+        FROM ga.stg_device_daily
+        WHERE report__date >= (current_date - interval '30 days')
+          AND audience__device_category IS NOT NULL AND audience__device_category <> ''
+        GROUP BY property, device
+        ORDER BY property, sessions DESC
+    """,
+    # Key on-site actions — trailing 30d. Excludes GA4's automatic events so the
+    # list shows meaningful actions (audio plays, outbound clicks, player use).
+    "web_key_events": """
+        SELECT account__property_name AS property,
+               engagement__event_name AS event,
+               sum(engagement__event_count) AS count
+        FROM ga.stg_events_daily
+        WHERE report__date >= (current_date - interval '30 days')
+          AND engagement__event_name NOT IN
+              ('page_view','session_start','first_visit','user_engagement','scroll','ad_impression')
+        GROUP BY property, event
+        ORDER BY property, count DESC
+    """,
     # ── Development Director tab — Funraise donor queries ──────────────────
     "donor_retention_trend": """
         WITH gifts AS (
