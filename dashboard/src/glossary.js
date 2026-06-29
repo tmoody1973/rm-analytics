@@ -46,6 +46,8 @@ export const DECK = {
   hourly_grid: "The week at a glance: where listening peaks by hour and day.",
   tsl_trend: "How long the average streaming listener stays with us, month over month.",
   top_web_content: "The stories pulling people to our sites.",
+  top_pages_weekly: "What's drawing traffic right now — the last 7 days. Watch for spikes worth amplifying on social and in the newsletter.",
+  top_pages_monthly: "Our durable performers over the last 30 days — the evergreen pages worth investing in. Views show reach; engagement time shows whether people stayed.",
   device_split: "What our streaming audience listens on — useful for ad targeting.",
   retention_cohort: "First-year donors are the leaky bucket; repeat donors stick. Here's the gap.",
   donor_status: "New donors coming in versus our returning base, month by month.",

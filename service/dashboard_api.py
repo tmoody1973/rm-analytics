@@ -187,6 +187,33 @@ QUERIES: dict[str, str] = {
         ORDER BY views DESC
         LIMIT 50
     """,
+    # Top pages for the Digital tab — two windows (weekly = trailing 7d,
+    # monthly = trailing 30d). Page TITLES are derived from the slug in the
+    # frontend (ga.dim_pages is empty); SQL returns path + volume + quality.
+    "top_pages_weekly": """
+        SELECT account__property_name AS property,
+               page__page_path AS page_path,
+               sum(engagement__views) AS views,
+               sum(acquisition__total_users) AS users,
+               round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s
+        FROM ga.stg_pages_daily
+        WHERE report__date >= (current_date - interval '7 days')
+        GROUP BY property, page_path
+        ORDER BY views DESC
+        LIMIT 15
+    """,
+    "top_pages_monthly": """
+        SELECT account__property_name AS property,
+               page__page_path AS page_path,
+               sum(engagement__views) AS views,
+               sum(acquisition__total_users) AS users,
+               round((sum(engagement__user_engagement) / NULLIF(sum(acquisition__total_users), 0))::numeric, 1) AS avg_engagement_s
+        FROM ga.stg_pages_daily
+        WHERE report__date >= (current_date - interval '30 days')
+        GROUP BY property, page_path
+        ORDER BY views DESC
+        LIMIT 15
+    """,
     # ── Development Director tab — Funraise donor queries ──────────────────
     "donor_retention_trend": """
         WITH gifts AS (
