@@ -23,38 +23,45 @@ const ROLE_TABS = [
 
 const EXAMPLE_GROUPS = [
   {
-    group: 'Membership & giving',
+    group: 'The money',
     qs: [
-      'How are we tracking on member retention this year?',
-      'Which months brought in the most new sustaining members?',
+      'How are we tracking against budget this fiscal year?',
+      'Are we running a surplus or deficit year-to-date?',
     ],
   },
   {
-    group: 'Audience & programming',
+    group: 'Membership & giving',
     qs: [
-      'What were our busiest streaming dayparts last month?',
-      'How does 88Nine’s cume compare to earlier this year?',
+      'How are we tracking on member retention this year?',
+      'How many sustaining members do we have, and what’s the recurring revenue?',
+    ],
+  },
+  {
+    group: 'Audience & reach',
+    qs: [
+      'How is 88Nine’s streaming audience trending this year?',
+      'How does our Nielsen standing in the Milwaukee market look?',
     ],
   },
   {
     group: 'Digital & content',
     qs: [
-      'What were our top web pages this week?',
+      'What web pages are drawing the most people right now?',
       'Which newsletter topics drive the most opens?',
     ],
   },
   {
-    group: 'Social & competitors',
+    group: 'How we compare',
     qs: [
       'How does our Instagram engagement rate compare to the public radio stations we track?',
-      'What content themes are working best for the competitors we benchmark against?',
+      'What content is working for competitors that we aren’t doing?',
     ],
   },
   {
-    group: 'Finance & the big picture',
+    group: 'The big picture',
     qs: [
-      'How are we tracking against budget this year?',
-      'What’s our revenue mix so far this year?',
+      'What’s one thing going well and one thing to watch?',
+      'Did the spring pledge drive move streaming and giving?',
     ],
   },
 ]
