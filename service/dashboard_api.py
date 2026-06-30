@@ -25,7 +25,7 @@ from metrics.registry import run_metric  # noqa: E402
 QUERIES: dict[str, str] = {
     "header": """
         SELECT
-          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Revenue YTD - Cash' ORDER BY month DESC LIMIT 1) AS revenue_ytd,
+          (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Revenue Actual YTD - Cash' ORDER BY month DESC LIMIT 1) AS revenue_ytd,
           (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Cash balance' ORDER BY month DESC LIMIT 1) AS cash_balance,
           (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Total donors YTD' ORDER BY month DESC LIMIT 1) AS total_donors,
           (SELECT value FROM finance.fact_kpi_monthly WHERE indicator='Surplus/deficit YTD' ORDER BY month DESC LIMIT 1) AS surplus_ytd,
@@ -42,7 +42,7 @@ QUERIES: dict[str, str] = {
     """,
     "revenue_vs_budget": """
         SELECT month::text AS month,
-               max(value) FILTER (WHERE indicator='Revenue YTD - Cash') AS revenue_ytd,
+               max(value) FILTER (WHERE indicator='Revenue Actual YTD - Cash') AS revenue_ytd,
                max(value) FILTER (WHERE indicator='Revenue Budget YTD') AS budget_ytd
         FROM finance.fact_kpi_monthly GROUP BY month ORDER BY month
     """,
