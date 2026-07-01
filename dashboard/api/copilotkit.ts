@@ -10,7 +10,7 @@
  *   - System prompt loaded from disk (api/system-prompt.md) at module init; authoritative server-side.
  *   - forwardSystemMessages: false (v2 default) — client cannot override instructions.
  *   - ANTHROPIC_API_KEY read from process.env; never exposed to the browser.
- *   - Model: process.env.ANTHROPIC_MODEL || "anthropic:claude-sonnet-4-6" (v2 provider:model format).
+ *   - Model: process.env.ANTHROPIC_MODEL || "anthropic:claude-sonnet-5" (v2 provider:model format).
  *   - Four server-side tools extracted to api/_tools.ts for independent testability (Task 5).
  */
 
@@ -62,11 +62,11 @@ const systemPrompt = loadSystemPrompt();
 /**
  * CopilotKit v2 expects the model in "provider:model-id" format.
  * ANTHROPIC_MODEL may be set as either:
- *   - bare:        claude-sonnet-4-6   (we prepend "anthropic:")
- *   - prefixed:    anthropic:claude-sonnet-4-6   (used as-is)
+ *   - bare:        claude-sonnet-5   (we prepend "anthropic:")
+ *   - prefixed:    anthropic:claude-sonnet-5   (used as-is)
  */
 function resolveModel(): string {
-  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
   return raw.startsWith("anthropic:") ? raw : `anthropic:${raw}`;
 }
 
