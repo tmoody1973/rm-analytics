@@ -311,3 +311,66 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
 /* ---------- Section sub-headers (e.g. Digital tab "How do people find us?") ---------- */
 .subhead { font-family: var(--ff-display); font-size: 1.15rem; font-weight: var(--fw-bold);
   color: var(--fg); margin: 26px 0 8px; }
+
+/* ---------- "How to ask" help modal ---------- */
+.help-btn { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border-inverse, rgba(247,241,219,.3));
+  color: var(--fg-on-dark, #F7F1DB); border-radius: 8px; padding: 6px 12px;
+  font: inherit; font-size: var(--fs-body-sm); font-weight: var(--fw-bold); }
+.help-btn:hover { border-color: var(--rm-orange); color: var(--rm-orange); }
+/* Contextual "how to ask about this tab" link that sits under the filter bar. */
+.help-tab-link { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: transparent; border: none; color: var(--rm-orange-dark); font: inherit;
+  font-size: var(--fs-body-sm); font-weight: var(--fw-bold); padding: 2px 0; margin: 0 0 4px; }
+.help-tab-link:hover { text-decoration: underline; }
+
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(20,24,26,.62);
+  display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px;
+  overflow-y: auto; }
+.modal { background: var(--bg, #fff); color: var(--fg); border-radius: 14px;
+  box-shadow: var(--shadow-lg); width: 100%; max-width: 780px; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden; }
+.modal-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px; border-bottom: 1px solid var(--border); flex: none; }
+.modal-head h2 { font-family: var(--ff-display); font-size: 1.35rem; margin: 0; color: var(--fg); }
+.modal-close { background: transparent; border: none; cursor: pointer; font-size: 1.6rem;
+  line-height: 1; color: var(--fg-muted); padding: 0 4px; }
+.modal-close:hover { color: var(--fg); }
+.modal-body { padding: 20px 22px 26px; overflow-y: auto; }
+
+.help-recipe { display: grid; gap: 8px; margin: 12px 0 14px; }
+.help-recipe-item { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px;
+  align-items: baseline; padding: 8px 12px; background: var(--rm-orange-tint);
+  border: 1px solid var(--border); border-radius: 10px; }
+.help-recipe-part { font-weight: var(--fw-bold); color: var(--fg); }
+.help-recipe-hint { color: var(--fg); font-size: var(--fs-body-sm); }
+.help-recipe-eg { grid-column: 2; color: var(--fg-muted); font-size: var(--fs-caption); }
+.help-example { font-size: var(--fs-body-sm); color: var(--fg); line-height: 1.5; margin: 8px 0; }
+.help-habits { display: grid; gap: 10px; margin: 14px 0 4px; }
+.help-habit-title { font-weight: var(--fw-bold); color: var(--fg); font-size: var(--fs-body-sm); }
+.help-habit-body { color: var(--fg-muted); font-size: var(--fs-body-sm); line-height: 1.45; }
+
+.help-roles { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
+.help-role-pill { cursor: pointer; background: transparent; border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 13px; font: inherit; font-size: var(--fs-body-sm);
+  color: var(--fg); }
+.help-role-pill:hover { border-color: var(--rm-orange); }
+.help-role-pill.active { background: var(--rm-orange); border-color: var(--rm-orange); color: #1F2528; font-weight: var(--fw-bold); }
+
+.help-whofor { font-size: var(--fs-body-lg); color: var(--fg); line-height: 1.5; margin: 0 0 14px; }
+.help-h { font-family: var(--ff-display); font-size: 1.02rem; color: var(--fg); margin: 18px 0 8px; }
+.help-vocab { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.help-vocab dt { font-weight: var(--fw-bold); color: var(--fg); font-size: var(--fs-body-sm); }
+.help-vocab dd { margin: 0; color: var(--fg-muted); font-size: var(--fs-body-sm); }
+.help-tier { margin-bottom: 12px; }
+.help-tier-label { font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: var(--ls-wide);
+  color: var(--fg-muted); margin: 0 0 6px; }
+.help-limits { margin-top: 6px; }
+.help-limits li { color: var(--fg-muted); }
+
+@media (max-width: 560px) {
+  .help-recipe-item { grid-template-columns: 1fr; }
+  .help-recipe-eg { grid-column: 1; }
+  .help-vocab { grid-template-columns: 1fr; gap: 2px 0; }
+  .help-vocab dd { margin: 0 0 8px; }
+}
