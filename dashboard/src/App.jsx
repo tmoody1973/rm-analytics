@@ -7,6 +7,8 @@ import { FilterBar } from './filters.jsx'
 import { ALL, DEFAULT_RANGE } from './brands.js'
 import { TABS } from './tabs.jsx'
 import { ChatPersistence } from './chat-persistence.jsx'
+import { HelpModal } from './help-modal.jsx'
+import { TAB_TO_ROLE } from './help-guide.js'
 
 export default function App() {
   const [data, setData] = useState(null)
@@ -16,6 +18,9 @@ export default function App() {
   const [brand, setBrand] = useState(ALL)
   const [range, setRange] = useState(DEFAULT_RANGE)
   const [threadId] = useState(() => crypto.randomUUID())
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [helpRole, setHelpRole] = useState(null)
+  const openHelp = (role) => { setHelpRole(role); setHelpOpen(true) }
 
   useEffect(() => {
     fetchDashboard().then(setData).catch((e) => setErr(e.message))
@@ -54,6 +59,7 @@ export default function App() {
             <img className="logo" src="/assets/logo-cream.png" alt="Radio Milwaukee" />
             <span className="live-pill"><span className="live-dot" />Live Dashboard</span>
             <div className="hero-user">
+              <button className="help-btn" onClick={() => openHelp(null)}>How to ask</button>
               <UserButton afterSignOutUrl="/" appearance={{ elements: { userButtonAvatarBox: { width: 34, height: 34 } } }} />
             </div>
           </div>
@@ -97,6 +103,12 @@ export default function App() {
             filter bar shows on every tab; org-wide cards carry an OrgWideBadge and ignore it. */}
         <FilterBar brand={brand} range={range} onBrand={setBrand} onRange={setRange} />
 
+        {TAB_TO_ROLE[tab] && (
+          <button className="help-tab-link" onClick={() => openHelp(TAB_TO_ROLE[tab])}>
+            How to ask about {tab} →
+          </button>
+        )}
+
         <main>
           {err ? <div className="loading">Couldn't load data: {err}</div>
             : !data ? <div className="loading">Loading the warehouse…</div>
@@ -121,6 +133,7 @@ export default function App() {
         clickOutsideToClose={false}
       />
       <ChatPersistence threadId={threadId} />
+      <HelpModal open={helpOpen} roleId={helpRole} onClose={() => setHelpOpen(false)} />
     </>
   )
 }
