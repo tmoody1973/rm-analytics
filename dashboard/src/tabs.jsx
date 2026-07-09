@@ -636,10 +636,15 @@ function DigitalReach(d, f) {
 }
 
 // ---------- SOCIAL (Facebook + Instagram) ----------
+// The clean IG view (schema/022) returns NULL where the source can't be trusted.
+// Skip those rows: fall back to the latest month that actually measured this
+// metric, and return null (renders "—") if none did. Coercing NULL to 0 would
+// swap a wrong big number for a wrong zero.
 const igLatest = (rows, metric) => {
-  if (!rows.length) return null
-  const last = rows.reduce((m, r) => (r.month > m ? r.month : m), rows[0].month)
-  return sum(rows.filter((r) => r.month === last).map((r) => Number(r[metric] || 0)))
+  const measured = rows.filter((r) => r[metric] != null)
+  if (!measured.length) return null
+  const last = measured.reduce((m, r) => (r.month > m ? r.month : m), measured[0].month)
+  return sum(measured.filter((r) => r.month === last).map((r) => Number(r[metric])))
 }
 const sum = (arr) => arr.reduce((a, b) => a + b, 0)
 
