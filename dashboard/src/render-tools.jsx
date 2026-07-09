@@ -16,7 +16,7 @@ import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
-import { brandColor, seriesColor, SERIES, AXIS, GRID, TOOLTIP, num } from './components.jsx'
+import { brandColor, seriesColor, toNumOrNull, SERIES, AXIS, GRID, TOOLTIP, num } from './components.jsx'
 
 const H = 220   // the sidebar is ~400px wide; the dashboard's 300 is too tall here
 
@@ -44,20 +44,13 @@ export const tableSchema = z.object({
 
 /**
  * Coerce only the series columns to numbers; the x value passes through verbatim
- * (it is usually a date or a category label).
- *
- * Anything absent, empty, or unparseable becomes `null`, NOT 0 — Recharts breaks
- * the line on null, which is how "we did not measure this month" should read. A
- * `|| 0` here would silently assert the station had zero engagement.
+ * (it is usually a date or a category label). Missing values become `null`, never 0 —
+ * see `toNumOrNull`, which `pivot` shares.
  */
 export function normalizeChartData(data, xKey, series) {
   return (data ?? []).map((row) => {
     const out = { [xKey]: row?.[xKey] }
-    for (const key of series ?? []) {
-      const raw = row?.[key]
-      const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw)
-      out[key] = Number.isNaN(n) ? null : n
-    }
+    for (const key of series ?? []) out[key] = toNumOrNull(row?.[key])
     return out
   })
 }

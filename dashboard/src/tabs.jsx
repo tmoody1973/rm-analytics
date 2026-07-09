@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   RM, SERIES, AXIS, GRID, TOOLTIP, money, moneyK, num, pct,
-  Kpi, ChartCard, SectionTitle, pivot, distinct, sumBy, HourGrid,
+  Kpi, ChartCard, SectionTitle, pivot, distinct, sumBy, HourGrid, latestCompletePeriod,
 } from './components.jsx'
 import {
   filterByBrand, filterByDate, brandHasChannel, stationLabel, propertyLabel, rangeLabel,
@@ -32,7 +32,9 @@ function Lines({ rows, xKey, seriesKey, valKey, x, nameFmt = (s) => s }) {
         <Tooltip {...TOOLTIP} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {series.map((s, i) => (
-          <Line key={s} type="monotone" dataKey={s} name={nameFmt(s)}
+          // connectNulls={false} is the Recharts default; stated so nobody "fixes" a gap
+          // by turning it on. A gap means the month was never measured (pivot → null).
+          <Line key={s} type="monotone" dataKey={s} name={nameFmt(s)} connectNulls={false}
             stroke={stationColor(s) || SERIES[i % SERIES.length]} strokeWidth={2.4} dot={false} />
         ))}
       </LineChart>
@@ -640,13 +642,24 @@ function DigitalReach(d, f) {
 // Skip those rows: fall back to the latest month that actually measured this
 // metric, and return null (renders "—") if none did. Coercing NULL to 0 would
 // swap a wrong big number for a wrong zero.
-const igLatest = (rows, metric) => {
-  const measured = rows.filter((r) => r[metric] != null)
-  if (!measured.length) return null
-  const last = measured.reduce((m, r) => (r.month > m ? r.month : m), measured[0].month)
-  return sum(measured.filter((r) => r.month === last).map((r) => Number(r[metric])))
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const monthLabel = (iso) => {
+  const [y, m] = String(iso ?? '').split('-')
+  return MONTHS[Number(m) - 1] ? `${MONTHS[Number(m) - 1]} ${y}` : '—'
 }
-const sum = (arr) => arr.reduce((a, b) => a + b, 0)
+
+// The IG tiles each sit on the latest month where every reporting account has a value, so
+// a partial month is never summed and presented as an org total. That means two tiles can
+// legitimately show different months — so each names its own, rather than all claiming
+// "Latest month".
+const igTile = (rows, metric) => {
+  const r = latestCompletePeriod(rows, metric, 'month', 'account')
+  if (!r) return { value: null, note: 'Not measured yet' }
+  const note = r.covered < r.expected
+    ? `${monthLabel(r.period)} · ${r.covered} of ${r.expected} accounts`
+    : monthLabel(r.period)
+  return { value: r.value, note }
+}
 
 function Social(d, f) {
   const hasFb = brandHasChannel(f.brand, 'fb')
@@ -686,14 +699,15 @@ function Social(d, f) {
   const fbRows = filterByDate(filterByBrand(d.social_followers, f.brand, 'account', fromFbAccount), 'date', f.range)
   const fb = sumBy(fbRows, 'date', 'followers').sort((a, b) => a.date.localeCompare(b.date))
   const ig = filterByDate(filterByBrand(d.social_ig_monthly, f.brand, 'account', fromIgAccount), 'month', f.range)
+  const [igReach, igEng, igAcct] = ['reach', 'engagements', 'accounts_engaged'].map((m) => igTile(ig, m))
   return (
     <>
       <SectionTitle>{SECTION_INTRO.social} <BrandBadge brand={f.brand} /></SectionTitle>
       <div className="grid cols-4">
         <Kpi label="Facebook Followers" value={num((fb.at(-1) || {}).followers)} accent note="Latest" />
-        <Kpi label="Instagram Reach" value={num(igLatest(ig, 'reach'))} info={GLOSSARY.reach} note="Latest month · unique people" />
-        <Kpi label="Instagram Engagement" value={num(igLatest(ig, 'engagements'))} note="Latest month" />
-        <Kpi label="IG Accounts Engaged" value={num(igLatest(ig, 'accounts_engaged'))} note="Latest month" />
+        <Kpi label="Instagram Reach" value={num(igReach.value)} info={GLOSSARY.reach} note={`${igReach.note} · unique people`} />
+        <Kpi label="Instagram Engagement" value={num(igEng.value)} note={igEng.note} />
+        <Kpi label="IG Accounts Engaged" value={num(igAcct.value)} note={igAcct.note} />
       </div>
       <div className="grid cols-2">
         <ChartCard title="Instagram Reach (monthly)" info={GLOSSARY.reach}>
@@ -718,7 +732,7 @@ function Social(d, f) {
           </ResponsiveContainer>
         )}
       </ChartCard>
-      <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected.</div>
+      <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected. <strong>A break in a line means that month was never measured, not that the number was zero</strong> — Meta only began reporting engagement in August 2025.</div>
 
       {/* Email — Mailchimp widgets folded into the Social tab */}
       {hasEmail && (
