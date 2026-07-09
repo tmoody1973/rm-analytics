@@ -127,12 +127,13 @@ QUERIES: dict[str, str] = {
         WHERE snapshot_date=(SELECT max(snapshot_date) FROM meta_organic.fact_ig_followers_daily)
         ORDER BY followers_count DESC
     """,
+    # Reads the CLEAN view (schema/022): engagement metrics are NULL where the
+    # source is untrustworthy (pre-Aug-2025 collection gap, -1 sentinels, and the
+    # months where engagements exceeded reach). `month` is the month START.
     "social_ig_monthly": """
-        SELECT account__account_name AS account, report__end_date::text AS month,
-               performance__reach AS reach, performance__engagements AS engagements,
-               engagement__accounts_engaged AS accounts_engaged
-        FROM meta_organic.stg_ig_profile_monthly
-        ORDER BY report__end_date, account__account_name
+        SELECT account, month::text AS month, reach, engagements, accounts_engaged
+        FROM meta_organic.v_ig_profile_monthly
+        ORDER BY month, account
     """,
     "email_campaigns": """
         SELECT campaign_title, list_name, send_time::date::text AS sent,

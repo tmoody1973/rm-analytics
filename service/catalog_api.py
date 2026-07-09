@@ -102,6 +102,17 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
     ("dim", "stations"): "The 4 station codes: RM88 (88Nine), HYFIN, RM414 (414 Music), RLR (Rhythm Lab Radio).",
     ("dim", "brand_channels"): "Maps each social handle / GA property / email list / ad account to a station_code.",
     ("meta_organic", "fact_ig_followers_daily"): "Daily Instagram follower counts per brand page.",
+    ("meta_organic", "v_ig_profile_monthly"): (
+        "Monthly Instagram profile metrics per (account, month) — THE CLEAN SOURCE. "
+        "Use this; the raw stg_ig_profile_monthly is not readable (bad data). Engagement "
+        "columns are deliberately NULL where the source can't be trusted: before Aug 2025 "
+        "(collection gap — reach IS populated back to Jan 2025), where a `-1` sentinel "
+        "appeared, and where engagements exceeded reach (impossible; hits hyfin.mke Feb + "
+        "Jul 2026). NULL means 'not measured', not zero — never report it as zero, and "
+        "exclude those months from trends. `accounts_engaged` only starts Dec 2025. "
+        "`engagement_rate` = engagements/reach. Accounts: radiomilwaukee AND 88nine.mke "
+        "(both are 88Nine), hyfin.mke, gwmusiclab. `follows_and_unfollows` is never populated."
+    ),
     ("email_esp", "stg_campaigns_report"): (
         "Mailchimp campaign report — ONE ROW PER NEWSLETTER (`id` = campaign_id), Jan 2024-. "
         "This is the authoritative campaign list AND where the PERFORMANCE metrics live: "
