@@ -32,7 +32,9 @@ function Lines({ rows, xKey, seriesKey, valKey, x, nameFmt = (s) => s }) {
         <Tooltip {...TOOLTIP} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {series.map((s, i) => (
-          <Line key={s} type="monotone" dataKey={s} name={nameFmt(s)}
+          // connectNulls={false} is the Recharts default; stated so nobody "fixes" a gap
+          // by turning it on. A gap means the month was never measured (pivot → null).
+          <Line key={s} type="monotone" dataKey={s} name={nameFmt(s)} connectNulls={false}
             stroke={stationColor(s) || SERIES[i % SERIES.length]} strokeWidth={2.4} dot={false} />
         ))}
       </LineChart>
@@ -718,7 +720,7 @@ function Social(d, f) {
           </ResponsiveContainer>
         )}
       </ChartCard>
-      <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected.</div>
+      <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected. <strong>A break in a line means that month was never measured, not that the number was zero</strong> — Meta only began reporting engagement in August 2025.</div>
 
       {/* Email — Mailchimp widgets folded into the Social tab */}
       {hasEmail && (

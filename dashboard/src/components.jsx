@@ -88,13 +88,27 @@ export function SectionTitle({ children }) {
   return <h2 className="section-title">{children}</h2>
 }
 
+/**
+ * Coerce a warehouse cell to a number, or to `null` when it was never measured.
+ *
+ * NEVER returns 0 for a missing value. `Number(null)` and `Number('')` are both 0,
+ * which is how a NULL month — "we didn't collect this" — becomes a chart point at
+ * zero, i.e. "the station had zero engagement." Recharts breaks a line on null,
+ * which is the honest picture.
+ */
+export const toNumOrNull = (v) => {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isNaN(n) ? null : n
+}
+
 // pivot rows like [{station_code, month, value}] into recharts-friendly [{month, RM88, HYFIN,...}]
 export function pivot(rows, keyField, seriesField, valueField) {
   const out = {}
   for (const r of rows) {
     const k = r[keyField]
     out[k] = out[k] || { [keyField]: k }
-    out[k][r[seriesField]] = Number(r[valueField])
+    out[k][r[seriesField]] = toNumOrNull(r[valueField])
   }
   return Object.values(out)
 }
