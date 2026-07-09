@@ -112,6 +112,41 @@ export function pivot(rows, keyField, seriesField, valueField) {
   }
   return Object.values(out)
 }
+/**
+ * Sum `metric` over the most recent period in which EVERY reporting entity has a value.
+ *
+ * Summing the most recent period with *any* value silently understates the total whenever
+ * one entity is missing — the Instagram Engagement tile summed 3 of 4 accounts (10,611)
+ * while the last complete month totalled 25,673, and labelled it "Latest month". A partial
+ * period is not a total.
+ *
+ * "Reporting entities" are those that report the metric at all, so an account that never
+ * reports it can't block every period from counting as complete. When no period is ever
+ * complete, falls back to the latest partial one and reports `covered < expected` so the
+ * caller can say so out loud.
+ *
+ * Returns `{ value, period, covered, expected }`, or `null` if nothing was ever measured.
+ */
+export function latestCompletePeriod(rows, metric, periodField, entityField) {
+  const measured = (rows ?? []).filter((r) => r[metric] != null)
+  if (!measured.length) return null
+
+  const expected = new Set(measured.map((r) => r[entityField])).size
+  const byPeriod = new Map()
+  for (const r of measured) {
+    const p = r[periodField]
+    if (!byPeriod.has(p)) byPeriod.set(p, [])
+    byPeriod.get(p).push(Number(r[metric]))
+  }
+
+  const periods = [...byPeriod.keys()].sort()
+  const complete = periods.filter((p) => byPeriod.get(p).length === expected)
+  const period = complete.length ? complete[complete.length - 1] : periods[periods.length - 1]
+  const vals = byPeriod.get(period)
+
+  return { value: vals.reduce((a, b) => a + b, 0), period, covered: vals.length, expected }
+}
+
 export function distinct(rows, field) {
   return [...new Set(rows.map((r) => r[field]))]
 }
