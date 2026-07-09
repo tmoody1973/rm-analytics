@@ -8,6 +8,25 @@ export const RM = {
 }
 export const SERIES = [RM.charcoal, RM.blue, RM.orange, RM.blueSoft, RM.charcoal70]
 
+// Brand colors, keyed by both the warehouse station_code and the display names the
+// assistant uses when it labels a chart series, so a chart drawn in the chat agrees
+// with the dashboard on what color HYFIN is.
+// ponytail: tabs.jsx keeps its own 2-brand `stationColor`; folding it in here would
+// change RLR from charcoal to blueSoft on the streaming tabs. Do that deliberately.
+const BRAND_COLOR = {
+  rm88: RM.orange, '88nine': RM.orange, '88nine radio milwaukee': RM.orange, 'radio milwaukee': RM.orange,
+  hyfin: RM.blue,
+  rm414: RM.charcoal70, '414 music': RM.charcoal70,
+  rlr: RM.blueSoft, 'rhythm lab radio': RM.blueSoft,
+}
+
+/** Brand color for a station code or display label; null when the label isn't a brand. */
+export const brandColor = (label) =>
+  (typeof label === 'string' ? BRAND_COLOR[label.trim().toLowerCase()] : null) ?? null
+
+/** Brand color when the series names a brand, else the next color in the palette. */
+export const seriesColor = (label, i) => brandColor(label) ?? SERIES[i % SERIES.length]
+
 export const money = (n) => (n == null ? '—' : '$' + Math.round(Number(n)).toLocaleString())
 export const moneyK = (n) => (n == null ? '—' : '$' + Math.round(Number(n) / 1000).toLocaleString() + 'K')
 export const num = (n) => (n == null ? '—' : Math.round(Number(n)).toLocaleString())

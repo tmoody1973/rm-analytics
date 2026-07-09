@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chatsUrl, toolCallSummary, timeBucket, groupThreads } from "../src/history.jsx";
+import { chatsUrl, toolCallSummary, splitToolCalls, timeBucket, groupThreads } from "../src/history.jsx";
 
 describe("chatsUrl", () => {
   it("no args → /api/chats", () => expect(chatsUrl({})).toBe("/api/chats"));
@@ -23,6 +23,25 @@ describe("toolCallSummary", () => {
   it("returns empty array for null/undefined input", () => {
     expect(toolCallSummary(null)).toEqual([]);
     expect(toolCallSummary(undefined)).toEqual([]);
+  });
+});
+
+describe("splitToolCalls", () => {
+  // A rendered answer keeps its numbers ONLY in the tool-call args (the prompt
+  // forbids restating them in prose), so History must replay them as the visual.
+  it("routes render_* calls to visuals and everything else to queries", () => {
+    const { visuals, queries } = splitToolCalls([
+      { name: "query_sql", args: { sql: "SELECT 1" } },
+      { name: "render_chart", args: { title: "TLH", chart_type: "line" } },
+      { name: "render_table", args: { title: "DMAs" } },
+      { name: "get_metric", args: { metric: "cume" } },
+    ]);
+    expect(visuals.map((c) => c.name)).toEqual(["render_chart", "render_table"]);
+    expect(queries.map((c) => c.name)).toEqual(["query_sql", "get_metric"]);
+  });
+
+  it("is empty on both sides for a message with no tool calls", () => {
+    expect(splitToolCalls(null)).toEqual({ visuals: [], queries: [] });
   });
 });
 
