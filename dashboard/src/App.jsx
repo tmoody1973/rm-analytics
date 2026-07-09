@@ -7,6 +7,7 @@ import { FilterBar } from './filters.jsx'
 import { ALL, DEFAULT_RANGE } from './brands.js'
 import { TABS } from './tabs.jsx'
 import { ChatPersistence } from './chat-persistence.jsx'
+import { RenderTools } from './render-tools.jsx'
 import { HelpModal } from './help-modal.jsx'
 import { TAB_TO_ROLE } from './help-guide.js'
 
@@ -132,6 +133,7 @@ export default function App() {
         defaultOpen={false}
         clickOutsideToClose={false}
       />
+      <RenderTools />
       <ChatPersistence threadId={threadId} />
       <HelpModal open={helpOpen} roleId={helpRole} onClose={() => setHelpOpen(false)} />
     </>

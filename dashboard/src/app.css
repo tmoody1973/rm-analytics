@@ -195,6 +195,17 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
 .ch-sql pre { background: var(--rm-charcoal); color: var(--rm-cream); padding: var(--sp-3); border-radius: var(--r-sm);
   overflow-x: auto; font-size: var(--fs-caption); line-height: 1.5; margin: 4px 0 0; white-space: pre-wrap; }
 
+/* generative UI — charts/tables the assistant draws inline in the chat */
+.chat-viz { background: var(--rm-white); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-3); margin: var(--sp-2) 0 var(--sp-3); }
+.chat-viz-title { font: var(--fw-bold) var(--fs-overline) var(--ff-sans); text-transform: uppercase;
+  letter-spacing: var(--ls-wide); color: var(--fg-muted); margin-bottom: var(--sp-2); }
+.chat-viz-note { font-size: var(--fs-caption); color: var(--fg-subtle); margin-top: 6px; text-align: center; }
+/* wide tables scroll inside the card rather than widening the chat panel */
+.chat-viz-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.chat-viz-scroll table.rm { font-size: var(--fs-caption); }
+.chat-viz-scroll table.rm td, .chat-viz-scroll table.rm th { white-space: nowrap; }
+
 /* empty state */
 .hist-empty { text-align: center; color: var(--fg-muted); padding: var(--sp-16) var(--sp-6); max-width: 460px; margin: 0 auto; }
 .hist-empty-mark { font-size: 44px; color: var(--rm-orange-soft); margin-bottom: var(--sp-3); }

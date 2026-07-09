@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useAuth, useUser } from '@clerk/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ChartBlock, TableBlock } from './render-tools.jsx'
 
 // ── pure helpers (unit-tested) ───────────────────────────────────────────────
 
@@ -13,6 +14,22 @@ export function toolCallSummary(toolCalls) {
     if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed) } catch { /* keep string */ } }
     return { name, args: parsed }
   })
+}
+
+const VISUALS = { render_chart: ChartBlock, render_table: TableBlock }
+
+/**
+ * Split a turn's tool calls into the ones that drew something and the ones that
+ * fetched something. The assistant is told not to restate a rendered chart's rows
+ * in prose, so for a visual answer the numbers live ONLY in the tool-call args —
+ * replay them as the chart, not as a JSON dump under "SQL it ran".
+ */
+export function splitToolCalls(toolCalls) {
+  const calls = toolCallSummary(toolCalls)
+  return {
+    visuals: calls.filter((c) => c.name in VISUALS),
+    queries: calls.filter((c) => !(c.name in VISUALS)),
+  }
 }
 
 export function chatsUrl({ q, id } = {}) {
@@ -68,27 +85,34 @@ const initialOf = (email) => (email ? email.trim()[0].toUpperCase() : '?')
 function Transcript({ messages }) {
   return (
     <div className="ch-thread">
-      {messages.map((m) => (
-        <div key={m.seq} className={`ch-row ch-${m.role === 'assistant' ? 'assistant' : 'user'}`}>
-          <div className="ch-who">{m.role === 'assistant' ? 'Analyst' : 'You'}</div>
-          <div className="ch-bubble">
-            {m.role === 'assistant'
-              ? <div className="ch-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content || ''}</ReactMarkdown></div>
-              : <div className="ch-text">{m.content}</div>}
-            {m.tool_calls ? (
-              <details className="ch-sql">
-                <summary>SQL it ran</summary>
-                {toolCallSummary(m.tool_calls).map((tc, i) => (
-                  <div className="ch-sql-item" key={i}>
-                    <span className="ch-sql-name">{tc.name}</span>
-                    <pre>{tc.args.sql ? tc.args.sql : JSON.stringify(tc.args, null, 2)}</pre>
-                  </div>
-                ))}
-              </details>
-            ) : null}
+      {messages.map((m) => {
+        const { visuals, queries } = splitToolCalls(m.tool_calls)
+        return (
+          <div key={m.seq} className={`ch-row ch-${m.role === 'assistant' ? 'assistant' : 'user'}`}>
+            <div className="ch-who">{m.role === 'assistant' ? 'Analyst' : 'You'}</div>
+            <div className="ch-bubble">
+              {m.role === 'assistant'
+                ? <div className="ch-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content || ''}</ReactMarkdown></div>
+                : <div className="ch-text">{m.content}</div>}
+              {visuals.map((tc, i) => {
+                const Visual = VISUALS[tc.name]
+                return <Visual key={i} {...tc.args} />
+              })}
+              {queries.length ? (
+                <details className="ch-sql">
+                  <summary>SQL it ran</summary>
+                  {queries.map((tc, i) => (
+                    <div className="ch-sql-item" key={i}>
+                      <span className="ch-sql-name">{tc.name}</span>
+                      <pre>{tc.args.sql ? tc.args.sql : JSON.stringify(tc.args, null, 2)}</pre>
+                    </div>
+                  ))}
+                </details>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
