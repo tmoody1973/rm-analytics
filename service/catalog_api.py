@@ -102,6 +102,19 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
     ("dim", "stations"): "The 4 station codes: RM88 (88Nine), HYFIN, RM414 (414 Music), RLR (Rhythm Lab Radio).",
     ("dim", "brand_channels"): "Maps each social handle / GA property / email list / ad account to a station_code.",
     ("meta_organic", "fact_ig_followers_daily"): "Daily Instagram follower counts per brand page.",
+    ("ga", "v_app_daily"): (
+        "Daily GA4 MOBILE APP metrics per (station_code, date, platform) — THE CLEAN SOURCE "
+        "for app questions. Use this, NOT ga.stg_app_engagement_daily / stg_app_acquisition_daily. "
+        "Radio Milwaukee runs ONE app whose Android traffic migrated between two GA properties "
+        "in Sep 2025; this view sums them (a session is recorded by exactly one property, so "
+        "there is no double-count) and joins dim.brand_channels for station_code. Querying the "
+        "raw tables and summing properties, or picking one, both give wrong answers. "
+        "`sessions`, `views`, `new_users` are ADDITIVE — sum them freely across days and platforms. "
+        "`active_users_daily` is NOT additive across days: it is a per-day count of people, so "
+        "summing a month yields person-days, not people. AVERAGE it instead (same rule as CUME). "
+        "iOS exists for RMORG only; HYFIN's app reports Android alone. The CURRENT month is "
+        "partial — exclude it from month-over-month comparisons."
+    ),
     ("meta_organic", "v_ig_profile_monthly"): (
         "Monthly Instagram profile metrics per (account, month) — THE CLEAN SOURCE. "
         "Use this; the raw stg_ig_profile_monthly is not readable (bad data). ANY column "

@@ -519,6 +519,29 @@ function DigitalReach(d, f) {
 
   const x = (dt) => String(dt).slice(5)
 
+  // Mobile apps (GA4, monthly). `station_code` is RMORG/HYFIN; completeOnly drops the
+  // month still accumulating. RM's two GA properties are already merged in ga.v_app_daily.
+  const appRows = completeOnly(filterByDate(
+    filterByBrand(d.app_monthly || [], f.brand, 'station_code', fromStation), 'month', f.range))
+
+  // Roll the station codes up per (month, platform). Necessary because pivot() OVERWRITES
+  // on a key collision rather than summing — under ALL brands, RMORG and HYFIN both report
+  // Android for the same month and one would silently replace the other.
+  const appByPlat = Object.values(appRows.reduce((acc, r) => {
+    const k = `${r.month}|${r.platform}`
+    acc[k] = acc[k] || { month: r.month, platform: r.platform, sessions: 0, views: 0, new_users: 0, dau: 0 }
+    acc[k].sessions += Number(r.sessions || 0)
+    acc[k].views += Number(r.views || 0)
+    acc[k].new_users += Number(r.new_users || 0)
+    acc[k].dau += Number(r.avg_daily_active_users || 0)
+    return acc
+  }, {}))
+  const appTotal = (k) => appByPlat.reduce((s, r) => s + Number(r[k] || 0), 0)
+  const appMonths = new Set(appByPlat.map((r) => r.month)).size
+  // Averaged across months, never summed: active users are people, and the same person
+  // is active on many days. Summing them counts person-days.
+  const appDau = appMonths ? Math.round(appTotal('dau') / appMonths) : null
+
   return (
     <>
       <SectionTitle>{SECTION_INTRO.digital} <BrandBadge brand={f.brand} /></SectionTitle>
@@ -587,6 +610,33 @@ function DigitalReach(d, f) {
           </table>
         </ChartCard>
       </div>
+
+      <div className="subhead">Mobile apps</div>
+      {appByPlat.length === 0 ? <NoBrandData brand={f.brand} channel="mobile app" /> : (
+        <>
+          <div className="grid cols-4">
+            <Kpi label={`App Sessions · ${rangeLabel(f.range)}`} accent value={num(appTotal('sessions'))} note="iOS + Android" />
+            <Kpi label="App Screen Views" value={num(appTotal('views'))} note="across platforms" />
+            <Kpi label="New App Users" value={num(appTotal('new_users'))} note="first opens" />
+            <Kpi label="Avg Daily Active Users" value={num(appDau)} note="averaged, never summed" />
+          </div>
+          <div className="grid cols-2">
+            <ChartCard title="App Sessions by Platform (monthly)">
+              <Lines rows={appByPlat} xKey="month" seriesKey="platform" valKey="sessions" x={(m) => m?.slice(0, 7)} />
+            </ChartCard>
+            <ChartCard title="New App Users by Platform (monthly)">
+              <Lines rows={appByPlat} xKey="month" seriesKey="platform" valKey="new_users" x={(m) => m?.slice(0, 7)} />
+            </ChartCard>
+          </div>
+          <div className="note-flag">
+            Radio Milwaukee's Android traffic moved to a new Google Analytics property in September 2025;
+            both properties are counted here as <strong>one app</strong>. iOS is tracked for Radio Milwaukee only —
+            HYFIN's app reports Android alone. <strong>Daily active users are averaged, never summed</strong>:
+            adding them across days would count the same person once per day. The month in progress is hidden
+            until it closes. App Store downloads and ratings are not connected yet.
+          </div>
+        </>
+      )}
 
       <div className="subhead">What are they reading?</div>
       <div className="grid cols-2">
