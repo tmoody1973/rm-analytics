@@ -61,3 +61,28 @@ describe('latestCompletePeriod', () => {
     expect(call(zeroed)).toEqual({ value: 4, period: '2026-07', covered: 2, expected: 2 })
   })
 })
+
+// ── in-progress months must not reach the tiles or the charts ────────────────
+
+import { completeOnly } from './components.jsx'
+
+describe('completeOnly', () => {
+  const rows = [
+    { month: '2026-06', account: 'a', is_complete: true },
+    { month: '2026-07', account: 'a', is_complete: false },   // still accumulating
+  ]
+
+  it('drops the month whose reporting window has not closed', () => {
+    expect(completeOnly(rows).map((r) => r.month)).toEqual(['2026-06'])
+  })
+
+  it('keeps rows from a source that does not carry is_complete at all', () => {
+    // Other datasets (streaming, finance) have no such column; they must pass through.
+    const other = [{ month: '2026-07', account: 'a' }]
+    expect(completeOnly(other)).toEqual(other)
+  })
+
+  it('is null-safe', () => {
+    expect(completeOnly(null)).toEqual([])
+  })
+})
