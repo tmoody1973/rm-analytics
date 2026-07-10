@@ -195,6 +195,11 @@ footer { background: var(--rm-charcoal); color: var(--rm-cream); opacity: .9; pa
 .ch-sql pre { background: var(--rm-charcoal); color: var(--rm-cream); padding: var(--sp-3); border-radius: var(--r-sm);
   overflow-x: auto; font-size: var(--fs-caption); line-height: 1.5; margin: 4px 0 0; white-space: pre-wrap; }
 
+/* partial-failure banner: some queries returned, some didn't */
+.data-warning { margin: var(--sp-3) auto 0; max-width: 1200px; padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--rm-orange); border-left-width: 4px; border-radius: var(--r-sm);
+  background: rgba(248,151,29,.08); color: var(--rm-charcoal); font-size: var(--fs-body-sm); line-height: 1.5; }
+
 /* generative UI — charts/tables the assistant draws inline in the chat */
 .chat-viz { background: var(--rm-white); border: 1px solid var(--border); border-radius: var(--r-md);
   padding: var(--sp-3); margin: var(--sp-2) 0 var(--sp-3); }

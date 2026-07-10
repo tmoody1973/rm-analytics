@@ -29,6 +29,10 @@ export default function App() {
 
   const h = (data && data.header && data.header[0]) || {}
   const filters = { brand, range }
+  // The API returns the queries that worked plus a list of the ones that didn't, rather
+  // than 500-ing the whole payload. An empty card with no explanation is worse than a
+  // missing one, so say which parts of the page can't be trusted right now.
+  const failed = (data && data._errors) || []
 
   // Expose the live view state to the CopilotKit agent so it can answer
   // "what am I looking at?" and "why did this move?" questions grounded
@@ -108,6 +112,14 @@ export default function App() {
           <button className="help-tab-link" onClick={() => openHelp(TAB_TO_ROLE[tab])}>
             How to ask about {tab} →
           </button>
+        )}
+
+        {failed.length > 0 && (
+          <div className="data-warning" role="status">
+            <strong>Some data didn't load.</strong> {failed.length} of the dashboard's
+            {' '}queries failed, so the cards they feed are empty rather than wrong:
+            {' '}{failed.map((f) => f.query).join(', ')}. Everything else on this page is current.
+          </div>
         )}
 
         <main>
