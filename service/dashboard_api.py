@@ -237,6 +237,27 @@ QUERIES: dict[str, str] = {
     # Daily web series (last 365d) powers the KPI row, period-over-period
     # deltas, and the growth/engagement trends — all derived client-side so the
     # global date filter applies. Per (property, date).
+    # Mobile app, monthly. Reads ga.v_app_daily (schema/024), which merges Radio
+    # Milwaukee's TWO GA properties — one app, migrated Sep 2025 — and carries the
+    # only iOS rows. `active_users_daily` is a DAILY value: averaged here, never
+    # summed, or the month reports person-days instead of people.
+    # is_complete: the month's last calendar day is present in the data. The current
+    # month is always partial (GA is daily and today is mid-month), and the frontend
+    # drops it — the same rule the Instagram tiles learned the hard way.
+    "app_monthly": """
+        SELECT station_code,
+               date_trunc('month', date)::date::text AS month,
+               platform,
+               sum(sessions)                          AS sessions,
+               sum(views)                             AS views,
+               sum(new_users)                         AS new_users,
+               round(avg(active_users_daily))::bigint AS avg_daily_active_users,
+               (max(date) >= (date_trunc('month', min(date)) + interval '1 month - 1 day')::date)
+                                                      AS is_complete
+        FROM ga.v_app_daily
+        GROUP BY 1, 2, 3
+        ORDER BY 2, 1, 3
+    """,
     "web_daily": """
         SELECT account__property_name AS property,
                report__date AS date,
