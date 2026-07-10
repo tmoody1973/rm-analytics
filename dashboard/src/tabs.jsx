@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   RM, SERIES, AXIS, GRID, TOOLTIP, money, moneyK, num, pct,
-  Kpi, ChartCard, SectionTitle, pivot, distinct, sumBy, HourGrid, latestCompletePeriod,
+  Kpi, ChartCard, SectionTitle, pivot, distinct, sumBy, HourGrid, latestCompletePeriod, completeOnly,
 } from './components.jsx'
 import {
   filterByBrand, filterByDate, brandHasChannel, stationLabel, propertyLabel, rangeLabel,
@@ -698,7 +698,9 @@ function Social(d, f) {
 
   const fbRows = filterByDate(filterByBrand(d.social_followers, f.brand, 'account', fromFbAccount), 'date', f.range)
   const fb = sumBy(fbRows, 'date', 'followers').sort((a, b) => a.date.localeCompare(b.date))
-  const ig = filterByDate(filterByBrand(d.social_ig_monthly, f.brand, 'account', fromIgAccount), 'month', f.range)
+  // completeOnly at the single entry point: the tiles and the trend lines read the same
+  // rows, so they can never disagree about whether the in-progress month exists.
+  const ig = completeOnly(filterByDate(filterByBrand(d.social_ig_monthly, f.brand, 'account', fromIgAccount), 'month', f.range))
   const [igReach, igEng, igAcct] = ['reach', 'engagements', 'accounts_engaged'].map((m) => igTile(ig, m))
   return (
     <>
@@ -732,7 +734,7 @@ function Social(d, f) {
           </ResponsiveContainer>
         )}
       </ChartCard>
-      <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected. <strong>A break in a line means that month was never measured, not that the number was zero</strong> — Meta only began reporting engagement in August 2025.</div>
+      <div className="note-flag">Instagram reach/engagement is monthly (per account). Radio Milwaukee includes both @radiomilwaukee and @88nine.mke. Paid social (Meta Ads) is not yet connected. <strong>A break in a line means that month was never measured, not that the number was zero</strong> — Meta only began reporting engagement in August 2025. <strong>The month in progress is hidden until it closes</strong>, so a partial month is never compared against a full one.</div>
 
       {/* Email — Mailchimp widgets folded into the Social tab */}
       {hasEmail && (

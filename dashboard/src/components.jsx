@@ -113,6 +113,16 @@ export function pivot(rows, keyField, seriesField, valueField) {
   return Object.values(out)
 }
 /**
+ * Drop rows whose reporting period is still accumulating.
+ *
+ * Coupler re-pulls the current month nightly, so its row covers only the days elapsed
+ * — nine of them, when this was written. Charted or summed next to 30-day months it
+ * reads as a collapse in reach. Rows from sources with no `is_complete` column pass
+ * through untouched.
+ */
+export const completeOnly = (rows) => (rows ?? []).filter((r) => r?.is_complete !== false)
+
+/**
  * Sum `metric` over the most recent period in which EVERY reporting entity has a value.
  *
  * Summing the most recent period with *any* value silently understates the total whenever

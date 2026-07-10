@@ -130,8 +130,10 @@ QUERIES: dict[str, str] = {
     # Reads the CLEAN view (schema/022): engagement metrics are NULL where the
     # source is untrustworthy (pre-Aug-2025 collection gap, -1 sentinels, and the
     # months where engagements exceeded reach). `month` is the month START.
+    # is_complete = false for the month still accumulating; the frontend drops those
+    # rather than compare 9 days against 30. NULL means not measured, never zero.
     "social_ig_monthly": """
-        SELECT account, month::text AS month, reach, engagements, accounts_engaged
+        SELECT account, month::text AS month, reach, engagements, accounts_engaged, is_complete
         FROM meta_organic.v_ig_profile_monthly
         ORDER BY month, account
     """,
@@ -144,7 +146,10 @@ QUERIES: dict[str, str] = {
         SELECT
           (SELECT sum(engagement__sessions) FROM ga.stg_sessions_daily WHERE report__date >= current_date - interval '30 days') AS web_sessions_30d,
           (SELECT coalesce(sum(performance__content_views___total),0) FROM meta_organic.stg_fb_page_daily WHERE report__date >= current_date - interval '30 days')
-            + (SELECT coalesce(sum(performance__reach),0) FROM meta_organic.stg_ig_profile_monthly WHERE report__end_date >= current_date - interval '40 days') AS social_reach_30d,
+            -- Read the CLEAN view, not staging: the raw table still carries the
+            -- impossible reach values the view nulls out (hyfin.mke 2026-07 = 2,213
+            -- against 6,135 accounts engaged). Summing staging quietly re-imports the bug.
+            + (SELECT coalesce(sum(reach),0) FROM meta_organic.v_ig_profile_monthly WHERE period_end >= current_date - interval '40 days') AS social_reach_30d,
           (SELECT sum(emails_sent) FROM email_esp.stg_campaigns_report WHERE send_time >= current_date - interval '30 days') AS emails_sent_30d
     """,
     "daypart_aas": """
