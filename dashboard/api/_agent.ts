@@ -38,6 +38,17 @@ export const MAX_STEPS = 15;
 export const SOFT_DEADLINE_MS = 45_000;
 /** Hard abort before Vercel's 120s wall, so WE stop the run, not an ungraceful kill. */
 export const HARD_ABORT_MS = 110_000;
+/**
+ * AI SDK retry count per streamText call (default is 2). Exponential backoff w/ jitter
+ * rides out transient Anthropic "Overloaded" (HTTP 529 — provider capacity), which was
+ * throwing the gather phase before it could reach synthesis → silent no-answer.
+ */
+export const MAX_RETRIES = 5;
+
+/** Shown to the user only when we could produce NO text at all — never over a real answer. */
+export const OVERLOADED_MESSAGE =
+  "The AI service is briefly overloaded and couldn't finish answering. " +
+  "Please try that question again in a moment.";
 
 /** System prompt for the synthesis call: no persona bloat, no render emphasis, no tools. */
 export const SYNTHESIS_SYSTEM =
@@ -66,6 +77,13 @@ export function shouldFinalize(
 export interface BuildAgentStreamOptions {
   /** "anthropic:claude-sonnet-5" (colon form resolveModel accepts). */
   model: string;
+  /**
+   * Optional cross-vendor fallback, e.g. "openai:gpt-5.1" or "anthropic:claude-haiku-4-5".
+   * If the primary model fails synthesis (repeated Overloaded, etc.), we retry the
+   * tool-free synthesis on this model before falling back to a graceful error message.
+   * Empty/undefined = no fallback (primary + retries + graceful error only).
+   */
+  fallbackModel?: string;
   /** Server-authoritative system prompt. */
   systemPrompt: string;
   /** Server-side tools with `execute` (get_metric, query_sql, …). */
@@ -90,6 +108,9 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
   const softMs = opts.softDeadlineMs ?? SOFT_DEADLINE_MS;
   const maxSteps = opts.maxSteps ?? MAX_STEPS;
   const model = resolveModel(opts.model);
+  // Resolving is cheap and never hits the network — a missing OPENAI_API_KEY only throws
+  // when we actually call this model, which we catch → graceful error. So resolve eagerly.
+  const fallbackModel = opts.fallbackModel ? resolveModel(opts.fallbackModel) : null;
 
   // useAgentContext() data arrives on input.context — append to the system prompt, as the
   // classic agent does, so "what am I looking at?" grounding is preserved.
@@ -111,11 +132,12 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
     ...convertToolDefinitionsToVercelAITools(opts.serverTools),  // server tools (with execute)
   };
 
-  return { fullStream: runTwoPhase({ model, system, convo, tools, abortSignal: opts.abortSignal, now, softMs, maxSteps }) };
+  return { fullStream: runTwoPhase({ model, fallbackModel, system, convo, tools, abortSignal: opts.abortSignal, now, softMs, maxSteps }) };
 }
 
 async function* runTwoPhase(args: {
   model: ReturnType<typeof resolveModel>;
+  fallbackModel: ReturnType<typeof resolveModel> | null;
   system: string;
   convo: any[];
   tools: ToolSet;
@@ -124,61 +146,103 @@ async function* runTwoPhase(args: {
   softMs: number;
   maxSteps: number;
 }): AsyncIterable<unknown> {
-  const { model, system, convo, tools, abortSignal, now, softMs, maxSteps } = args;
+  const { model, fallbackModel, system, convo, tools, abortSignal, now, softMs, maxSteps } = args;
   const startedAt = now();
-  let textLen = 0, toolCalls = 0, synthLen = 0;
-  let phase: "gather" | "synth" = "gather";
+  let toolCalls = 0, gatherText = 0, synthText = 0;
+  let phase: "gather" | "synth" | "fallback" | "error" = "gather";
+  // Has ANY text reached the client? Guards the graceful error from clobbering a real
+  // (even partial) answer, and tells us whether the stream still needs a terminal finish.
+  let yieldedText = false;
+  let finishEmitted = false;
+  let priorMessages: any[] = [];
 
-  const gather = streamText({
-    model,
-    system,
-    messages: convo,
-    tools,
-    stopWhen: stepCountIs(maxSteps),
-    abortSignal,
-    // Stop gathering when the budget is spent, so the synthesis call has time to run.
-    prepareStep: ({ stepNumber }) =>
-      shouldFinalize(stepNumber, now() - startedAt, { maxSteps, softMs })
-        ? { toolChoice: "none" as ToolChoice<ToolSet> }
-        : {},
-  });
-
-  let gatherFinish: unknown = null;
   try {
-    for await (const part of gather.fullStream) {
-      const t = (part as { type?: unknown })?.type;
-      if (isReasoning(t)) continue;
-      if (t === "finish") { gatherFinish = part; continue; }   // hold — `finish` ends the converter
-      if (t === "text-delta") textLen += String((part as { text?: string }).text ?? "").length;
-      else if (t === "tool-call") toolCalls += 1;
-      yield part;
-    }
+    // ─── GATHER: tools available; may answer on its own ───────────────────────────
+    const gather = streamText({
+      model,
+      system,
+      messages: convo,
+      tools,
+      stopWhen: stepCountIs(maxSteps),
+      abortSignal,
+      maxRetries: MAX_RETRIES,
+      // Stop gathering when the budget is spent, so the synthesis call has time to run.
+      prepareStep: ({ stepNumber }) =>
+        shouldFinalize(stepNumber, now() - startedAt, { maxSteps, softMs })
+          ? { toolChoice: "none" as ToolChoice<ToolSet> }
+          : {},
+    });
 
-    if (textLen > 0) {
-      // The model answered on its own — emit the held finish to end cleanly.
-      if (gatherFinish) yield gatherFinish;
-    } else {
-      // The model gathered but never wrote an answer → guaranteed synthesis, no tools.
-      phase = "synth";
-      let prior: any[] = [];
-      try { prior = (await gather.response).messages ?? []; } catch { prior = []; }
-      const synth = streamText({
-        model,
-        system: SYNTHESIS_SYSTEM,
-        messages: [...convo, ...prior, { role: "user", content: SYNTHESIS_USER }],
-        abortSignal,
-      });
-      for await (const part of synth.fullStream) {
+    let gatherFinish: unknown = null;
+    try {
+      for await (const part of gather.fullStream) {
         const t = (part as { type?: unknown })?.type;
         if (isReasoning(t)) continue;
-        if (t === "start" || t === "start-step") continue;   // avoid a second run-start
-        if (t === "text-delta") synthLen += String((part as { text?: string }).text ?? "").length;
-        yield part;   // synth's text-* and its `finish` end the stream cleanly
+        if (t === "finish") { gatherFinish = part; continue; }   // hold — `finish` ends the converter
+        if (t === "text-delta") { gatherText += String((part as { text?: string }).text ?? "").length; yieldedText = true; }
+        else if (t === "tool-call") toolCalls += 1;
+        yield part;
+      }
+      // Capture the tool results so synthesis (if needed) can reason over them.
+      try { priorMessages = (await gather.response).messages ?? []; } catch { priorMessages = []; }
+    } catch (err) {
+      // Gather threw (e.g. Overloaded after retries). If it already streamed a partial
+      // answer, close it out; otherwise fall through to synthesis/fallback/error.
+      console.log("[agent]", JSON.stringify({ phase: "gather", event: "error", err: String(err) }));
+    }
+
+    if (gatherText > 0) {
+      // The model answered on its own — emit the held finish to end cleanly.
+      if (gatherFinish) { yield gatherFinish; finishEmitted = true; }
+      return;
+    }
+
+    // ─── SYNTHESIZE: no tools, guaranteed prose. Try primary, then the fallback model. ─
+    const synthMessages = [...convo, ...priorMessages, { role: "user", content: SYNTHESIS_USER }];
+    const candidates: Array<{ m: ReturnType<typeof resolveModel>; label: "synth" | "fallback" }> = [
+      { m: model, label: "synth" },
+      ...(fallbackModel ? [{ m: fallbackModel, label: "fallback" as const }] : []),
+    ];
+
+    for (const { m, label } of candidates) {
+      phase = label;
+      try {
+        const synth = streamText({
+          model: m,
+          system: SYNTHESIS_SYSTEM,
+          messages: synthMessages,
+          abortSignal,
+          maxRetries: MAX_RETRIES,
+        });
+        for await (const part of synth.fullStream) {
+          const t = (part as { type?: unknown })?.type;
+          if (isReasoning(t)) continue;
+          if (t === "start" || t === "start-step") continue;   // avoid a second run-start
+          if (t === "finish") finishEmitted = true;
+          if (t === "text-delta") { synthText += String((part as { text?: string }).text ?? "").length; yieldedText = true; }
+          yield part;   // synth's text-* and its `finish` end the stream cleanly
+        }
+        if (synthText > 0) return;   // got an answer — done
+      } catch (err) {
+        console.log("[agent]", JSON.stringify({ phase: label, event: "error", err: String(err) }));
+        if (yieldedText) break;   // a partial answer already streamed — don't stack a second attempt on top
       }
     }
+
+    // ─── GRACEFUL ERROR: nothing produced any text. Never leave the user staring at silence. ─
+    if (!yieldedText) {
+      phase = "error";
+      const id = "err-" + now();
+      yield { type: "text-start", id };
+      yield { type: "text-delta", id, text: OVERLOADED_MESSAGE };
+      yield { type: "text-end", id };
+    }
   } finally {
-    // Observability: grep Vercel logs for [agent]. textLen/synthLen tell us the answer landed.
-    console.log("[agent]", JSON.stringify({ phase, ms: now() - startedAt, toolCalls, gatherText: textLen, synthText: synthLen }));
+    // The converter needs exactly one `finish` to close. If we streamed text but no phase
+    // emitted a finish (partial-then-throw, or the error message), emit one now.
+    if (!finishEmitted) yield { type: "finish", finishReason: "stop" };
+    // Observability: grep Vercel logs for [agent]. gatherText/synthText tell us the answer landed.
+    console.log("[agent]", JSON.stringify({ phase, ms: now() - startedAt, toolCalls, gatherText, synthText, yieldedText }));
   }
 }
 

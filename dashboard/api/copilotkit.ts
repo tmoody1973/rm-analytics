@@ -71,6 +71,17 @@ function resolveModel(): string {
   return raw.startsWith("anthropic:") ? raw : `anthropic:${raw}`;
 }
 
+/**
+ * Optional cross-vendor fallback for the tool-free synthesis call. Set FALLBACK_MODEL in
+ * Vercel to a "provider:model" string the runtime can resolve — e.g. "openai:gpt-5.1"
+ * (also set OPENAI_API_KEY) or "anthropic:claude-haiku-4-5". Unset = no fallback (primary
+ * model + retries + graceful error only). Provider-prefixed already; no rewriting.
+ */
+function resolveFallbackModel(): string | undefined {
+  const raw = process.env.FALLBACK_MODEL?.trim();
+  return raw ? raw : undefined;
+}
+
 // ────────────────────────────────────────────────── runtime + handler build ───
 
 // "aisdk" factory config instead of the classic config, because the classic config
@@ -85,6 +96,7 @@ const agent = new BuiltInAgent({
   factory: (ctx) =>
     buildAgentStream(ctx.input, {
       model: resolveModel(),
+      fallbackModel: resolveFallbackModel(),
       systemPrompt,
       serverTools: ALL_TOOLS,
       abortSignal: withDeadline(ctx.abortSignal),
