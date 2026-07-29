@@ -110,7 +110,7 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
     ...convertToolDefinitionsToVercelAITools(opts.serverTools),  // server tools (with execute)
   };
 
-  return streamText({
+  const result = streamText({
     model: resolveModel(opts.model),
     messages,
     tools,
@@ -125,6 +125,25 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
       return {};
     },
   });
+
+  // Strip reasoning parts before CopilotKit's runtime sees them. Sonnet 5 emits
+  // reasoning-start/delta/end alongside the answer; CopilotKit's AI-SDK converter
+  // mishandles that lifecycle (it assumes @ai-sdk/anthropic never emits reasoning-end —
+  // 3.0.87 does) and DROPS the final text, so the user gets "Thought for N seconds…"
+  // and no answer even though the text is right there in the stream (proven: 1,250 chars
+  // of answer arrive after the reasoning parts). Filtering reasoning out here keeps the
+  // model thinking server-side while the converter only ever sees the clean tool-call +
+  // text stream it handles correctly. `fullStream` is all CopilotKit's factory consumes.
+  return { fullStream: withoutReasoning(result.fullStream) };
+}
+
+/** Drop reasoning-* stream parts; pass tool-call, text, and lifecycle parts through. */
+async function* withoutReasoning(stream: AsyncIterable<unknown>): AsyncIterable<unknown> {
+  for await (const part of stream) {
+    const type = (part as { type?: unknown })?.type;
+    if (typeof type === "string" && type.startsWith("reasoning")) continue;
+    yield part;
+  }
 }
 
 /** Compose the run's abort signal with the hard-deadline backstop. */
