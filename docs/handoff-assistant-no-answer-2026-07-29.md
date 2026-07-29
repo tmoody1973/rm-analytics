@@ -63,5 +63,17 @@ In `api/_agent.ts`:
 - `ai` **6.0.212**, `@ai-sdk/anthropic` **3.0.87**. `ANTHROPIC_MODEL` set in Vercel prod = `claude-sonnet-5` (code default too).
 - Local smoke pattern (reproduces the failure): real `api/system-prompt.md` + a mock `query_sql` tool that returns `"partial — query another table"` (makes the model over-call) + `render_chart`/`render_table` as `input.tools` + `buildAgentStream(..., { softDeadlineMs: 9000 })`.
 
+## OPTIMIZATION plan (researched — reduces 529 Overloaded + latency + cost)
+The 529s are worsened by our request size: the **21KB system prompt + all tool defs are re-sent every step** of the agentic loop (9-step run = 9× the prefix). Do these in order:
+
+1. **Prompt caching (biggest win).** Mark the system prompt (and ideally tool defs) with Anthropic `cacheControl: { type: 'ephemeral' }` so the prefix is processed once per window, not every step → ~90% fewer input tokens/step, lower latency, **fewer 529s** (smaller requests clear faster). We call `@ai-sdk/anthropic` directly (via `resolveModel`), so we control caching — NOT downgraded by a gateway. Prompt is well over the 1024-token min.
+   - Mechanism to verify for `@ai-sdk/anthropic` 3.0.87: `providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } }` — the current cookbook marks the **last system/prefix element**; check whether to pass system as a message with per-message `providerOptions` vs the `system:` param. Refs: AI SDK Anthropic provider docs, cookbook "Dynamic Prompt Caching", vercel/ai issues #7612 (v5 system caching) and #3820 (tool caching).
+2. **`maxRetries` 4–5 + backoff** (AI SDK does exponential backoff w/ jitter) — rides out transient 529 (capacity back-pressure, distinct from 429 rate limit).
+3. **Graceful error message** (never silent) — see NEXT STEP above.
+4. **Fallback model on repeated overload** — 529 is per-model; on failure retry (esp. the synth call) with a lighter/other model (e.g. Haiku). True platform-wide failover needs cross-vendor (Bedrock/Vertex Claude) — heavier, optional; discuss with Tarik.
+5. **Trim thinking + steps** — reduce thinking budget (adds tokens/latency/load) and keep the anti-flail prompt so runs use fewer, smaller steps.
+
+Expected impact: caching alone should cut per-step tokens ~90% and noticeably reduce Overloaded hits; caching + retries + graceful message together should make "no answer" effectively disappear (either a real answer, or a clear "try again" — never silence).
+
 ## Strategic note for Tarik (his question, unresolved)
 He asked repeatedly whether to switch frameworks ("I don't have this issue with my app Crate"). Honest read: **the Vercel AI SDK is the layer that WORKS; CopilotKit's runtime is the fragile layer** (its reasoning handling and the toolChoice stall). You cannot "drop the AI SDK and keep CopilotKit" — CopilotKit is built on the AI SDK. If patching keeps failing, the durable path is to keep the AI SDK backend (already built in `_agent.ts`) and replace only CopilotKit's runtime/UI (e.g. AI SDK `useChat` + a lighter chat UI, or upgrade to 1.64+). Do NOT propose Claude hosted agents — worse fit. Decide with Tarik after the Overloaded fix lands.
