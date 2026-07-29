@@ -16,14 +16,31 @@ import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
-import { brandColor, seriesColor, toNumOrNull, SERIES, AXIS, GRID, TOOLTIP, num } from './components.jsx'
+import { brandColor, seriesColors, toNumOrNull, SERIES, AXIS, GRID, TOOLTIP, num } from './components.jsx'
 
 const H = 220   // the sidebar is ~400px wide; the dashboard's 300 is too tall here
 
 // Six-digit ticks ("140,000") overflow a y-axis narrow enough to leave room for the
 // plot in a ~400px panel, and render clipped. Compact them: 140K.
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
-const tick = (v) => (typeof v === 'number' ? compact.format(v) : v)
+
+// Value formatters. A rate charted as a raw "0.86" reads as noise; the same point as
+// "86%" is instantly legible. `value_format` (model-supplied) picks the units; if the
+// model omits it we auto-detect a rate — every non-null value sits within [-1.5, 1.5],
+// which counts never do — so an engagement/retention rate still renders as a percent.
+export const asPercent = (v) => (typeof v === 'number' ? `${(v * 100).toFixed(v !== 0 && Math.abs(v) < 0.1 ? 1 : 0)}%` : v)
+export const asMoney = (v) => (typeof v === 'number' ? `$${compact.format(v)}` : v)
+export const asCompact = (v) => (typeof v === 'number' ? compact.format(v) : v)
+
+export function pickFormatter(valueFormat, rows, series) {
+  if (valueFormat === 'percent') return asPercent
+  if (valueFormat === 'currency') return asMoney
+  if (valueFormat === 'number') return asCompact
+  // no explicit format → auto-detect a rate
+  const vals = rows.flatMap((r) => series.map((k) => r[k])).filter((v) => typeof v === 'number')
+  const looksLikeRate = vals.length > 0 && vals.every((v) => Math.abs(v) <= 1.5)
+  return looksLikeRate ? asPercent : asCompact
+}
 
 const cell = z.union([z.string(), z.number()]).nullable()
 
@@ -34,6 +51,8 @@ export const chartSchema = z.object({
   series: z.array(z.string()).min(1).describe('One key per plotted line/bar, e.g. ["88Nine","HYFIN"]. These become the legend labels.'),
   data: z.array(z.record(cell)).min(2).describe('Rows of {x_key: label, ...series values}. Use null — never 0 — where a value was not measured.'),
   y_label: z.string().optional().describe('What the y-axis counts, e.g. "Listening hours"'),
+  value_format: z.enum(['number', 'percent', 'currency']).optional()
+    .describe('How to format the values. Use "percent" for RATES/SHARES passed as fractions (0.86 → 86%), "currency" for dollars, "number" (default) for counts. Always set "percent" when charting engagement rate, open rate, retention, AQH share, etc.'),
 })
 
 export const tableSchema = z.object({
@@ -55,7 +74,7 @@ export function normalizeChartData(data, xKey, series) {
   })
 }
 
-export function ChartBlock({ title, chart_type, x_key, series, data, y_label }) {
+export function ChartBlock({ title, chart_type, x_key, series, data, y_label, value_format }) {
   // Args stream in partially while the model is still writing the tool call.
   if (!x_key || !series?.length || !data?.length) return null
 
@@ -64,27 +83,31 @@ export function ChartBlock({ title, chart_type, x_key, series, data, y_label }) 
   // A one-series bar chart is a comparison ACROSS categories ("TLH by brand"), so the
   // brand lives on the x-axis, not in the series name. Color each bar by its category.
   const perCategory = chart_type === 'bar' && series.length === 1
+  const fmt = pickFormatter(value_format, rows, series)      // % / $ / compact, axis + tooltip agree
+  const colors = seriesColors(series)                        // distinct per line — no two-blue collision
+  // % axis needs a touch more room ("100%"); compact counts fit in 44.
+  const yWidth = fmt === asPercent ? 40 : 48
 
   return (
     <div className="chat-viz">
       <div className="chat-viz-title">{title}</div>
       <ResponsiveContainer width="100%" height={H}>
-        <Chart data={rows} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+        <Chart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
           <CartesianGrid {...GRID} vertical={false} />
           <XAxis dataKey={x_key} {...AXIS} />
-          <YAxis {...AXIS} width={44} tickFormatter={tick} />
-          <Tooltip {...TOOLTIP} formatter={num} />
+          <YAxis {...AXIS} width={yWidth} tickFormatter={fmt} />
+          <Tooltip {...TOOLTIP} formatter={(v) => fmt(v)} />
           {series.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} /> : null}
           {series.map((key, i) =>
             chart_type === 'bar'
               ? (
-                <Bar key={key} dataKey={key} fill={seriesColor(key, i)} radius={[3, 3, 0, 0]}>
+                <Bar key={key} dataKey={key} fill={colors[i]} radius={[3, 3, 0, 0]}>
                   {perCategory
                     ? rows.map((row, r) => <Cell key={r} fill={brandColor(row[x_key]) ?? SERIES[0]} />)
                     : null}
                 </Bar>
               )
-              : <Line key={key} type="monotone" dataKey={key} stroke={seriesColor(key, i)}
+              : <Line key={key} type="monotone" dataKey={key} stroke={colors[i]}
                   strokeWidth={2.2} dot={false} connectNulls={false} />,
           )}
         </Chart>

@@ -27,6 +27,29 @@ export const brandColor = (label) =>
 /** Brand color when the series names a brand, else the next color in the palette. */
 export const seriesColor = (label, i) => brandColor(label) ?? SERIES[i % SERIES.length]
 
+/**
+ * Assign every series a DISTINCT color: brand color where the label names a brand
+ * and that color isn't already taken, otherwise the next unused palette color. Prevents
+ * the collision where a non-brand series falls back to a palette blue that HYFIN already
+ * owns — two indistinguishable lines. Returns one color per label, in order.
+ */
+export function seriesColors(labels) {
+  const used = new Set()
+  const out = labels.map((label) => {
+    const b = brandColor(label)
+    if (b && !used.has(b)) { used.add(b); return b }
+    return null   // fill from the palette in a second pass, once brand colors are claimed
+  })
+  let p = 0
+  return out.map((c) => {
+    if (c) return c
+    while (p < SERIES.length && used.has(SERIES[p])) p += 1
+    const col = SERIES[p % SERIES.length]
+    used.add(col); p += 1
+    return col
+  })
+}
+
 export const money = (n) => (n == null ? '—' : '$' + Math.round(Number(n)).toLocaleString())
 export const moneyK = (n) => (n == null ? '—' : '$' + Math.round(Number(n) / 1000).toLocaleString() + 'K')
 export const num = (n) => (n == null ? '—' : Math.round(Number(n)).toLocaleString())
