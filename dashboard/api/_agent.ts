@@ -33,10 +33,11 @@ import {
 
 /** Backstop on the tool loop. Time is the real limit (below), so this rarely binds. */
 export const MAX_STEPS = 15;
-/** Force a tool-free final answer at ~70s — leaves ~35s to write before the abort. */
-export const SOFT_DEADLINE_MS = 70_000;
+/** Force a tool-free final answer at ~50s — leaves ample time to write before the abort.
+ *  (Was 70s; long reasoning-heavy runs didn't finish the synthesis before the abort.) */
+export const SOFT_DEADLINE_MS = 50_000;
 /** Hard abort before Vercel's 120s wall, so WE stop the run, not an ungraceful kill. */
-export const HARD_ABORT_MS = 105_000;
+export const HARD_ABORT_MS = 110_000;
 
 /**
  * Injected as the system message on the forced-finalize step. Without it, a model
@@ -134,15 +135,36 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
   // of answer arrive after the reasoning parts). Filtering reasoning out here keeps the
   // model thinking server-side while the converter only ever sees the clean tool-call +
   // text stream it handles correctly. `fullStream` is all CopilotKit's factory consumes.
-  return { fullStream: withoutReasoning(result.fullStream) };
+  return { fullStream: withoutReasoning(result.fullStream, startedAt, now) };
 }
 
-/** Drop reasoning-* stream parts; pass tool-call, text, and lifecycle parts through. */
-async function* withoutReasoning(stream: AsyncIterable<unknown>): AsyncIterable<unknown> {
-  for await (const part of stream) {
-    const type = (part as { type?: unknown })?.type;
-    if (typeof type === "string" && type.startsWith("reasoning")) continue;
-    yield part;
+/**
+ * Drop reasoning-* parts, pass everything else through, and log a one-line summary at
+ * stream end — so we can SEE, without a Clerk session, whether the server actually
+ * produced the answer: text chars emitted, tool calls, steps, duration, and whether it
+ * ended via error/abort. Turns blind fixes into a diagnosis. Grep Vercel logs: [agent].
+ */
+async function* withoutReasoning(
+  stream: AsyncIterable<unknown>,
+  startedAt: number,
+  now: () => number,
+): AsyncIterable<unknown> {
+  let textLen = 0, toolCalls = 0, steps = 0, reasoning = 0;
+  let ok = true, err = "";
+  try {
+    for await (const part of stream) {
+      const type = (part as { type?: unknown })?.type;
+      if (type === "text-delta") textLen += String((part as { text?: string }).text ?? "").length;
+      else if (type === "tool-call") toolCalls += 1;
+      else if (type === "finish-step") steps += 1;
+      if (typeof type === "string" && type.startsWith("reasoning")) { reasoning += 1; continue; }
+      yield part;
+    }
+  } catch (e) {
+    ok = false; err = String(e).slice(0, 140);
+    throw e;
+  } finally {
+    console.log("[agent]", JSON.stringify({ ok, ms: now() - startedAt, steps, toolCalls, reasoning, textLen, err }));
   }
 }
 
