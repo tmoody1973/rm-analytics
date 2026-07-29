@@ -184,13 +184,18 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
         "on fact_posts, not raw followers. Non-additive — query at the snapshot grain."
     ),
     ("social_intel", "fact_posts"): (
-        "One row per public post per (account_id, post_id). USE `engagement_rate` "
-        "(=(likes+comments+shares+saves)/followers-at-fetch) — it is comparable across "
-        "account sizes; do NOT rank by raw likes/followers. Aggregate comment COUNTS only "
-        "(no commenter data). Join dim_accounts on account_id to split us (is_owned) vs them; "
-        "join fact_post_enrichment on post_id for content tags. Recent posts only (no deep history). "
-        "IG caveat: the Instagram API reports reels with post_type='video' (not 'reel'/'short'), "
-        "so filtering reels by post_type is unreliable for Instagram."
+        "One row per public post per (account_id, post_id). "
+        "COLUMNS (plain snake_case): account_id, post_id, platform, published_at, post_type, "
+        "caption, transcript, likes, comments_count, shares, views, saves, engagement_rate, "
+        "permalink, fetched_at. There is NO `account__account_name` or any `account__`-prefixed "
+        "column here — that double-underscore convention exists ONLY in ga.* / meta_organic.* "
+        "staging tables, NOT in social_intel. To get an account's handle/name/brand/is_owned, "
+        "JOIN dim_accounts ON dim_accounts.account_id = fact_posts.account_id. "
+        "USE `engagement_rate` (=(likes+comments+shares+saves)/followers-at-fetch) — it is "
+        "comparable across account sizes; do NOT rank by raw likes/followers. Aggregate comment "
+        "COUNTS only (no commenter data). Join fact_post_enrichment on post_id for content tags. "
+        "Recent posts only (no deep history). IG caveat: the Instagram API reports reels with "
+        "post_type='video' (not 'reel'/'short'), so filtering reels by post_type is unreliable for IG."
     ),
     ("social_intel", "fact_post_enrichment"): (
         "Haiku-derived TAGS per post (PK post_id). `content_theme` (local_artist_feature/"
