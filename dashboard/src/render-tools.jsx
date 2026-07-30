@@ -28,6 +28,14 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 // "86%" is instantly legible. `value_format` (model-supplied) picks the units; if the
 // model omits it we auto-detect a rate — every non-null value sits within [-1.5, 1.5],
 // which counts never do — so an engagement/retention rate still renders as a percent.
+/**
+ * JSX guard. render_chart / render_table are driven by MODEL-supplied args, which stream in
+ * and are not schema-validated at render time — the model can hand us an object/array where a
+ * scalar belongs (e.g. a cell like `{v: 1234}`). React throws error #31 on an object child, and
+ * with no error boundary that blanks the ENTIRE app. Coerce any non-primitive to text at the leaf.
+ */
+export const asText = (v) => (v != null && typeof v === 'object' ? JSON.stringify(v) : v)
+
 export const asPercent = (v) => (typeof v === 'number' ? `${(v * 100).toFixed(v !== 0 && Math.abs(v) < 0.1 ? 1 : 0)}%` : v)
 export const asMoney = (v) => (typeof v === 'number' ? `$${compact.format(v)}` : v)
 export const asCompact = (v) => (typeof v === 'number' ? compact.format(v) : v)
@@ -68,7 +76,9 @@ export const tableSchema = z.object({
  */
 export function normalizeChartData(data, xKey, series) {
   return (data ?? []).map((row) => {
-    const out = { [xKey]: row?.[xKey] }
+    // x passes through verbatim (date/category label) — but coerce a stray object so a
+    // recharts axis tick never receives one (React #31). Series are numeric via toNumOrNull.
+    const out = { [xKey]: asText(row?.[xKey]) }
     for (const key of series ?? []) out[key] = toNumOrNull(row?.[key])
     return out
   })
@@ -90,7 +100,7 @@ export function ChartBlock({ title, chart_type, x_key, series, data, y_label, va
 
   return (
     <div className="chat-viz">
-      <div className="chat-viz-title">{title}</div>
+      <div className="chat-viz-title">{asText(title)}</div>
       <ResponsiveContainer width="100%" height={H}>
         <Chart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
           <CartesianGrid {...GRID} vertical={false} />
@@ -112,7 +122,7 @@ export function ChartBlock({ title, chart_type, x_key, series, data, y_label, va
           )}
         </Chart>
       </ResponsiveContainer>
-      {y_label ? <div className="chat-viz-note">{y_label}</div> : null}
+      {y_label ? <div className="chat-viz-note">{asText(y_label)}</div> : null}
     </div>
   )
 }
@@ -137,7 +147,7 @@ export function TableBlock({ title, columns, rows }) {
                   const v = row?.[c] ?? null
                   return (
                     <td key={c} className={typeof v === 'number' ? 'num' : undefined}>
-                      {v === null ? '—' : typeof v === 'number' ? num(v) : v}
+                      {v === null ? '—' : typeof v === 'number' ? num(v) : asText(v)}
                     </td>
                   )
                 })}
@@ -171,9 +181,26 @@ export const TABLE_TOOL = {
   handler: async () => 'Table is now displayed to the user. Do not repeat its rows in prose.',
 }
 
+/**
+ * Last line of defense for the generative UI. A malformed model arg that slips past the leaf
+ * coercion must degrade to a small note — NEVER unmount the whole app (which is what happened:
+ * a render threw React #31 and, with no boundary anywhere, the entire dashboard went blank).
+ */
+export class RenderBoundary extends React.Component {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(err) { console.error('[render-tool] render failed, showing fallback:', err) }
+  render() {
+    if (this.state.failed) {
+      return <div className="chat-viz-note">⚠ Couldn't render this result. The data is in the reply above.</div>
+    }
+    return this.props.children
+  }
+}
+
 /** Registers both tools. Must be mounted inside <CopilotKit>. Renders nothing itself. */
 export function RenderTools() {
-  useFrontendTool({ ...CHART_TOOL, render: ({ args }) => <ChartBlock {...args} /> }, [])
-  useFrontendTool({ ...TABLE_TOOL, render: ({ args }) => <TableBlock {...args} /> }, [])
+  useFrontendTool({ ...CHART_TOOL, render: ({ args }) => <RenderBoundary><ChartBlock {...args} /></RenderBoundary> }, [])
+  useFrontendTool({ ...TABLE_TOOL, render: ({ args }) => <RenderBoundary><TableBlock {...args} /></RenderBoundary> }, [])
   return null
 }

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
 import {
   chartSchema, tableSchema, normalizeChartData, CHART_TOOL, TABLE_TOOL, TableBlock,
-  asPercent, pickFormatter,
+  asPercent, pickFormatter, asText, RenderBoundary,
 } from './render-tools.jsx'
 import { seriesColor, seriesColors, RM, SERIES } from './components.jsx'
 
@@ -27,6 +27,42 @@ describe('normalizeChartData', () => {
   it('coerces numeric strings and preserves the x value verbatim', () => {
     const [row] = normalizeChartData([{ month: '2026-01', engagements: '1234' }], 'month', series)
     expect(row).toEqual({ month: '2026-01', engagements: 1234 })
+  })
+
+  // Regression: a model-supplied object x value must NOT reach a recharts tick as an object
+  // (React #31 → blank app). It is coerced to text.
+  it('coerces a non-primitive x value to text so no object reaches JSX', () => {
+    const [row] = normalizeChartData([{ month: { v: '2026-01' }, engagements: 5 }], 'month', series)
+    expect(typeof row.month).toBe('string')
+    expect(row.month).toBe('{"v":"2026-01"}')
+  })
+})
+
+// The exact prod crash (2026-07-30): a model-supplied cell was an object `{v:...}`, which React
+// rejects as a child (#31) and — with no error boundary — blanked the whole dashboard.
+describe('render never crashes on a non-primitive from the model', () => {
+  it('asText passes primitives through and stringifies objects/arrays', () => {
+    expect(asText('x')).toBe('x')
+    expect(asText(3)).toBe(3)
+    expect(asText(null)).toBe(null)
+    expect(asText({ v: 1 })).toBe('{"v":1}')
+    expect(asText([1, 2])).toBe('[1,2]')
+  })
+
+  it('TableBlock renders an object cell as text instead of throwing', () => {
+    const html = renderToStaticMarkup(
+      <TableBlock title="t" columns={['A', 'B']} rows={[['ok', { v: 1234 }]]} />,
+    )
+    expect(html).toContain('ok')
+    expect(html).toContain('{&quot;v&quot;:1234}')  // stringified, not thrown
+  })
+
+  // RenderBoundary is the client-side safety net (error boundaries don't run under SSR, so it
+  // can't be exercised here without adding jsdom+RTL). Assert its shape instead — it's a class
+  // with the static getDerivedStateFromError React needs to catch a child throw.
+  it('RenderBoundary is a real error boundary (has getDerivedStateFromError)', () => {
+    expect(typeof RenderBoundary.getDerivedStateFromError).toBe('function')
+    expect(RenderBoundary.getDerivedStateFromError()).toEqual({ failed: true })
   })
 })
 
