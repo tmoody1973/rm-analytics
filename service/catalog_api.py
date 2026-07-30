@@ -115,6 +115,46 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
         "iOS exists for RMORG only; HYFIN's app reports Android alone. The CURRENT month is "
         "partial — exclude it from month-over-month comparisons."
     ),
+    # ── GA4 WEB (staging is the source of truth; the modeled ga.fact_* tables are EMPTY) ──
+    # There is NO station_code column in these tables — brand is the GA property:
+    #   account__property_id '409066609' = Radio Milwaukee / 88Nine website (radiomilwaukee.org)
+    #   account__property_id '304846646' = HYFIN website
+    # (also account__property_name = 'https://www.radiomilwaukee.org - GA4' vs 'HYFIN';
+    #  see dim.brand_channels rows where platform='ga4'.) Columns use the ga.* double-underscore
+    # convention. Additive metrics — sum across days. Data 2022-02 onward (dense from 2024).
+    ("ga", "stg_pages_daily"): (
+        "Website PAGE-LEVEL traffic (GA4) per (property, date, page path) — THE SOURCE for "
+        "'what website content/pages perform'. The modeled ga.fact_pages_daily is EMPTY; use THIS. "
+        "Cols: page__page_path, report__date, engagement__views (page views), "
+        "acquisition__total_users, engagement__user_engagement (seconds). NO station_code — filter "
+        "brand by account__property_id: HYFIN='304846646', Radio Milwaukee/88Nine='409066609'."
+    ),
+    ("ga", "stg_sessions_daily"): (
+        "Website SESSIONS/users (GA4) per (property, date, source/medium). The modeled ga.fact_* "
+        "are EMPTY; use THIS. Cols: report__date, engagement__sessions, engagement__engaged_sessions, "
+        "acquisition__total_users, acquisition__new_users, performance__bounce_rate, "
+        "session__average_session_duration, session__session_source___medium. Filter brand by "
+        "account__property_id: HYFIN='304846646', Radio Milwaukee/88Nine='409066609'."
+    ),
+    ("ga", "stg_events_daily"): (
+        "Website custom EVENTS (GA4) per (property, date, event name). The modeled ga.fact_events_* "
+        "are EMPTY; use THIS. Cols: report__date, engagement__event_name, engagement__event_count, "
+        "key_event__key_events, acquisition__total_users. Filter brand by account__property_id: "
+        "HYFIN='304846646', Radio Milwaukee/88Nine='409066609'."
+    ),
+    ("ga", "stg_geo_daily"): (
+        "Website traffic by GEOGRAPHY (GA4) per (property, date, city/region). Cols: report__date, "
+        "audience__city, audience__region, engagement__sessions, engagement__views, "
+        "acquisition__total_users/new_users. Filter brand by account__property_id: "
+        "HYFIN='304846646', Radio Milwaukee/88Nine='409066609'."
+    ),
+    # Empty modeled GA tables — the staging→fact promotion was never built. Redirect.
+    ("ga", "fact_pages_daily"): "EMPTY (never populated) — use ga.stg_pages_daily instead.",
+    ("ga", "fact_sessions_hourly"): "EMPTY (never populated) — use ga.stg_sessions_daily instead.",
+    ("ga", "fact_events_daily"): "EMPTY (never populated) — use ga.stg_events_daily instead.",
+    ("ga", "fact_events_hourly"): "EMPTY (never populated) — use ga.stg_events_daily instead.",
+    ("ga", "fact_geo_daily"): "EMPTY (never populated) — use ga.stg_geo_daily instead.",
+    ("ga", "fact_device_daily"): "EMPTY (never populated) — use ga.stg_device_daily instead.",
     ("meta_organic", "v_ig_profile_monthly"): (
         "Monthly Instagram profile metrics per (account, month) — THE CLEAN SOURCE. "
         "Use this; the raw stg_ig_profile_monthly is not readable (bad data). ANY column "
@@ -137,13 +177,43 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
         "Accounts: radiomilwaukee AND 88nine.mke (both are 88Nine), hyfin.mke, gwmusiclab. "
         "`follows_and_unfollows` is never populated."
     ),
+    # meta_organic post/page performance: modeled fact_* are EMPTY; real data is in stg_*.
+    # For 'what content performs' prefer social_intel.fact_posts (engagement_rate + tags).
+    ("meta_organic", "fact_post_lifetime"): (
+        "EMPTY (never populated) — use meta_organic.stg_ig_post_lifetime / stg_fb_post_lifetime for "
+        "per-post metrics, or better, social_intel.fact_posts (has engagement_rate + content tags for owned accounts)."
+    ),
+    ("meta_organic", "fact_page_daily"): "EMPTY (never populated) — use meta_organic.stg_fb_page_daily for daily FB page metrics.",
+    ("meta_organic", "stg_ig_post_lifetime"): (
+        "Instagram PER-POST lifetime metrics. Brand via account__account_name: 'radiomilwaukee' = 88Nine, "
+        "'hyfin.mke' = HYFIN, 'gwmusiclab' = GWML. Columns use post__* / insights__* double-underscore."
+    ),
+    ("meta_organic", "stg_fb_post_lifetime"): (
+        "Facebook PER-POST lifetime metrics. Brand via account__account_id: 77448067477 = Radio Milwaukee/88Nine, "
+        "103278985544368 = HYFIN, 702566750106561 = GWML (see dim.brand_channels fb_page rows)."
+    ),
+    ("meta_organic", "stg_fb_page_daily"): (
+        "Facebook daily PAGE metrics (page_views, new/lifetime followers). Brand via account__account_id "
+        "(same map as stg_fb_post_lifetime: 77448067477 = Radio Milwaukee/88Nine, 103278985544368 = HYFIN)."
+    ),
+    # meta_ads (PAID) — not ingested yet; every table is empty.
+    ("meta_ads", "fact_ad_insights_daily"): (
+        "NOT LOADED YET — paid Meta/ads data is not ingested (table empty). Answer ad-spend / ROAS / "
+        "paid-social questions with 'paid ads aren't tracked in the warehouse yet', don't report zeros."
+    ),
+    ("meta_ads", "dim_campaigns"): "EMPTY — paid Meta/ads is not ingested yet.",
+    ("meta_ads", "dim_ads"): "EMPTY — paid Meta/ads is not ingested yet.",
     ("email_esp", "stg_campaigns_report"): (
         "Mailchimp campaign report — ONE ROW PER NEWSLETTER (`id` = campaign_id), Jan 2024-. "
         "This is the authoritative campaign list AND where the PERFORMANCE metrics live: "
         "`opens_open_rate`, `opens_unique_opens`, `clicks_click_rate`, `clicks_unique_clicks`, "
         "`emails_sent`, `send_time`, `subject_line`. To correlate newsletter CONTENT with "
         "performance, JOIN this table on `id = fact_campaign_enrichment.campaign_id` (the modeled "
-        "email_esp.fact_campaign_sends table is NOT populated — use this staging table)."
+        "email_esp.fact_campaign_sends table is NOT populated — use this staging table). "
+        "BRAND per newsletter is the Mailchimp list: filter `list_name` (or `list_id`) — "
+        "HYFIN newsletters = list_name ILIKE '%HYFIN%' (list 'HYFIN List'), 88Nine/Radio Milwaukee = "
+        "'Radio Milwaukee List', GWML = Grace Weber's Music Lab. Per-brand SUBSCRIBER GROWTH lives in "
+        "the separate stg_growth_hyfin / stg_growth_rm88 / stg_growth_gwml tables."
     ),
     ("email_esp", "fact_campaign_content"): (
         "Newsletter BODY text per campaign (PK campaign_id = stg_campaigns_report.id). "
@@ -184,13 +254,18 @@ _TABLE_NOTES: dict[tuple[str, str], str] = {
         "on fact_posts, not raw followers. Non-additive — query at the snapshot grain."
     ),
     ("social_intel", "fact_posts"): (
-        "One row per public post per (account_id, post_id). USE `engagement_rate` "
-        "(=(likes+comments+shares+saves)/followers-at-fetch) — it is comparable across "
-        "account sizes; do NOT rank by raw likes/followers. Aggregate comment COUNTS only "
-        "(no commenter data). Join dim_accounts on account_id to split us (is_owned) vs them; "
-        "join fact_post_enrichment on post_id for content tags. Recent posts only (no deep history). "
-        "IG caveat: the Instagram API reports reels with post_type='video' (not 'reel'/'short'), "
-        "so filtering reels by post_type is unreliable for Instagram."
+        "One row per public post per (account_id, post_id). "
+        "COLUMNS (plain snake_case): account_id, post_id, platform, published_at, post_type, "
+        "caption, transcript, likes, comments_count, shares, views, saves, engagement_rate, "
+        "permalink, fetched_at. There is NO `account__account_name` or any `account__`-prefixed "
+        "column here — that double-underscore convention exists ONLY in ga.* / meta_organic.* "
+        "staging tables, NOT in social_intel. To get an account's handle/name/brand/is_owned, "
+        "JOIN dim_accounts ON dim_accounts.account_id = fact_posts.account_id. "
+        "USE `engagement_rate` (=(likes+comments+shares+saves)/followers-at-fetch) — it is "
+        "comparable across account sizes; do NOT rank by raw likes/followers. Aggregate comment "
+        "COUNTS only (no commenter data). Join fact_post_enrichment on post_id for content tags. "
+        "Recent posts only (no deep history). IG caveat: the Instagram API reports reels with "
+        "post_type='video' (not 'reel'/'short'), so filtering reels by post_type is unreliable for IG."
     ),
     ("social_intel", "fact_post_enrichment"): (
         "Haiku-derived TAGS per post (PK post_id). `content_theme` (local_artist_feature/"

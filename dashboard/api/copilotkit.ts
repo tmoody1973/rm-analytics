@@ -23,6 +23,7 @@ import { CopilotRuntime, BuiltInAgent, createCopilotRuntimeHandler } from "@copi
 import { createCopilotNodeHandler } from "@copilotkit/runtime/v2/node";
 
 import { ALL_TOOLS } from "./_tools.js";
+import { buildAgentStream, withDeadline } from "./_agent.js";
 import { verifiedSub, isUserAllowed } from "./_authz.js";
 
 // ──────────────────────────────────────────── system prompt (server-authoritative) ───
@@ -70,17 +71,36 @@ function resolveModel(): string {
   return raw.startsWith("anthropic:") ? raw : `anthropic:${raw}`;
 }
 
+/**
+ * Optional cross-vendor fallback for the tool-free synthesis call. Set FALLBACK_MODEL in
+ * Vercel to a "provider:model" string the runtime can resolve — e.g. "openai:gpt-5.1"
+ * (also set OPENAI_API_KEY) or "anthropic:claude-haiku-4-5". Unset = no fallback (primary
+ * model + retries + graceful error only). Provider-prefixed already; no rewriting.
+ */
+function resolveFallbackModel(): string | undefined {
+  const raw = process.env.FALLBACK_MODEL?.trim();
+  return raw ? raw : undefined;
+}
+
 // ────────────────────────────────────────────────── runtime + handler build ───
 
+// "aisdk" factory config instead of the classic config, because the classic config
+// cannot GUARANTEE a final answer: when its static maxSteps is reached (or the model
+// keeps running tools), the AI SDK ends the loop with no text and the Vercel 120s wall
+// kills the stream — the user sees silence. `buildAgentStream` runs our own streamText
+// with a prepareStep that forces a tool-free synthesis before the budget is spent, and a
+// deadline abortSignal that stops us gracefully before the wall. See api/_agent.ts.
+// forwardSystemMessages stays false — the client cannot inject or override instructions.
 const agent = new BuiltInAgent({
-  model: resolveModel(),
-  // prompt is the server-side system prompt field in v1.61.x BuiltInAgentClassicConfig.
-  // forwardSystemMessages defaults to false — client cannot inject or override instructions.
-  prompt: systemPrompt,
-  tools: ALL_TOOLS,
-  // Room for real multi-step analysis: get_schema → write SQL → recover from a
-  // query error → requery → synthesize. 5 was too low and cut complex answers off.
-  maxSteps: 15,
+  type: "aisdk",
+  factory: (ctx) =>
+    buildAgentStream(ctx.input, {
+      model: resolveModel(),
+      fallbackModel: resolveFallbackModel(),
+      systemPrompt,
+      serverTools: ALL_TOOLS,
+      abortSignal: withDeadline(ctx.abortSignal),
+    }),
 });
 
 const runtime = new CopilotRuntime({

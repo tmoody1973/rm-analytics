@@ -3,8 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
 import {
   chartSchema, tableSchema, normalizeChartData, CHART_TOOL, TABLE_TOOL, TableBlock,
+  asPercent, pickFormatter, asText, RenderBoundary,
 } from './render-tools.jsx'
-import { seriesColor, RM, SERIES } from './components.jsx'
+import { seriesColor, seriesColors, RM, SERIES } from './components.jsx'
 
 describe('normalizeChartData', () => {
   const series = ['engagements']
@@ -27,6 +28,42 @@ describe('normalizeChartData', () => {
     const [row] = normalizeChartData([{ month: '2026-01', engagements: '1234' }], 'month', series)
     expect(row).toEqual({ month: '2026-01', engagements: 1234 })
   })
+
+  // Regression: a model-supplied object x value must NOT reach a recharts tick as an object
+  // (React #31 → blank app). It is coerced to text.
+  it('coerces a non-primitive x value to text so no object reaches JSX', () => {
+    const [row] = normalizeChartData([{ month: { v: '2026-01' }, engagements: 5 }], 'month', series)
+    expect(typeof row.month).toBe('string')
+    expect(row.month).toBe('{"v":"2026-01"}')
+  })
+})
+
+// The exact prod crash (2026-07-30): a model-supplied cell was an object `{v:...}`, which React
+// rejects as a child (#31) and — with no error boundary — blanked the whole dashboard.
+describe('render never crashes on a non-primitive from the model', () => {
+  it('asText passes primitives through and stringifies objects/arrays', () => {
+    expect(asText('x')).toBe('x')
+    expect(asText(3)).toBe(3)
+    expect(asText(null)).toBe(null)
+    expect(asText({ v: 1 })).toBe('{"v":1}')
+    expect(asText([1, 2])).toBe('[1,2]')
+  })
+
+  it('TableBlock renders an object cell as text instead of throwing', () => {
+    const html = renderToStaticMarkup(
+      <TableBlock title="t" columns={['A', 'B']} rows={[['ok', { v: 1234 }]]} />,
+    )
+    expect(html).toContain('ok')
+    expect(html).toContain('{&quot;v&quot;:1234}')  // stringified, not thrown
+  })
+
+  // RenderBoundary is the client-side safety net (error boundaries don't run under SSR, so it
+  // can't be exercised here without adding jsdom+RTL). Assert its shape instead — it's a class
+  // with the static getDerivedStateFromError React needs to catch a child throw.
+  it('RenderBoundary is a real error boundary (has getDerivedStateFromError)', () => {
+    expect(typeof RenderBoundary.getDerivedStateFromError).toBe('function')
+    expect(RenderBoundary.getDerivedStateFromError()).toEqual({ failed: true })
+  })
 })
 
 describe('schemas', () => {
@@ -44,6 +81,39 @@ describe('schemas', () => {
       title: 't', chart_type: 'pie', x_key: 'month', series: ['a'],
       data: [{ month: '1', a: 1 }, { month: '2', a: 2 }],
     })).toThrow()
+  })
+})
+
+describe('value formatting (a rate must read as a %, not "1")', () => {
+  it('formats a fraction as a percent — 0.86 → 86%, not rounded to 1', () => {
+    expect(asPercent(0.86)).toBe('86%')
+    expect(asPercent(0.0463)).toBe('4.6%')   // sub-10% keeps one decimal
+    expect(asPercent(0)).toBe('0%')          // not "0.0%"
+  })
+
+  it('auto-detects a rate when value_format is omitted (all values within ±1.5)', () => {
+    const rows = [{ m: 'a', r: 0.05 }, { m: 'b', r: 0.86 }]
+    expect(pickFormatter(undefined, rows, ['r'])(0.86)).toBe('86%')
+  })
+
+  it('treats counts as counts, not percents', () => {
+    const rows = [{ m: 'a', v: 1200 }, { m: 'b', v: 3400 }]
+    expect(pickFormatter(undefined, rows, ['v'])(3400)).toBe('3.4K')
+  })
+
+  it('honors an explicit value_format over the heuristic', () => {
+    const rows = [{ m: 'a', v: 0.5 }]
+    expect(pickFormatter('currency', rows, ['v'])(1200)).toBe('$1.2K')
+    expect(pickFormatter('number', rows, ['v'])(0.5)).toBe('0.5')
+  })
+})
+
+describe('seriesColors (distinct per line — no two-blue collision)', () => {
+  it('gives every series a different color, even when a label misses the brand map', () => {
+    // The exact bug: 88nine.mke falls back to a palette blue that HYFIN already owns.
+    const cols = seriesColors(['88Nine (radiomilwaukee)', '88Nine (88nine.mke)', 'HYFIN'])
+    expect(new Set(cols).size).toBe(3)
+    expect(cols).toContain(RM.blue)   // HYFIN keeps its brand blue
   })
 })
 
