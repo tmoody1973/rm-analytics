@@ -1,5 +1,34 @@
 # Handoff — Assistant "doesn't answer" on hard questions (2026-07-29)
 
+> **UPDATE 2026-07-30 — the NEXT STEP below is DONE, plus three follow-on fixes. All on
+> `fix/assistant-always-answers`, deployed to prod (Fly `rm-data-loader` + Vercel dashboard).**
+>
+> 1. **Overloaded / never-silent (root cause #4) — FIXED.** `maxRetries` 2→5 on both streamText
+>    calls; `runTwoPhase` now guarantees a terminal message — on any throw it tries the synthesis
+>    model, then an optional `FALLBACK_MODEL`, then a graceful "briefly overloaded, try again"
+>    message; exactly one `finish` reaches the converter in every path. Proven by
+>    `test/agent-guarantee.test.ts` (self-answer / synth / fallback / all-throw). Commit `1fe20b6`.
+> 2. **Cross-vendor fallback — WIRED.** `FALLBACK_MODEL` env (provider:model) → the synth call
+>    retries on a second vendor. Prod is set to `openai:gpt-5.5` + `OPENAI_API_KEY` (both in Vercel).
+>    `resolveModel` already maps `openai:*` via the transitive `@ai-sdk/openai`. **UNVERIFIED that
+>    `gpt-5.5` is a valid id** (Vercel masks the key; chat behind Clerk) — fails safe to the graceful
+>    message. Prove it with `dashboard/api/_fallback.smoke.mts` (run with the key in the shell).
+> 3. **GA4 / cross-source "no data" — FIXED (root cause #5, the real blocker on the spike Q).**
+>    The modeled `fact_*` tables are EMPTY across GA/Meta/email; real data is in `stg_*`. The
+>    assistant queried the empty tables and said "no data". Added catalog notes + system-prompt
+>    steering to the populated `stg_*` tables with the right brand key (GA `account__property_id`
+>    HYFIN=304846646 / RM=409066609; Meta `account__account_name/id`; email `list_name`). meta_ads
+>    (paid) is genuinely not loaded → "not tracked yet". Verified: HYFIN now queries correctly in
+>    the chat archive. Commit `db191b1`. See MEMORY `empty-fact-full-staging-trap`.
+> 4. **Whole-screen blank on render — FIXED.** A model-supplied render_chart/table arg with an
+>    object cell (`{v:...}`) threw React #31 and, with no error boundary, unmounted the app.
+>    `asText()` leaf coercion + a `RenderBoundary` around both tool renders. Commit `b802126`.
+>
+> Original diagnosis (roots #1–#4) preserved below for context.
+
+---
+
+
 Repo `~/code/rm-analytics`. Branch **`fix/assistant-always-answers`**, PR **#31** (open, unmerged, many commits). Prod: dashboard `data.radiomilwaukee.org` (Vercel), API `rm-data-loader.fly.dev` (Fly), warehouse Neon `morning-frost-30675590`.
 
 ## The problem
