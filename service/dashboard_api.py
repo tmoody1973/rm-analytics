@@ -5,6 +5,7 @@ dashboard cells; GA/Meta/Email read the populated stg_ tables (clean fact_ are e
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import date, datetime
@@ -12,6 +13,8 @@ from decimal import Decimal
 
 import psycopg
 from psycopg.rows import dict_row
+
+log = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "loaders"))
 from _common import get_db_connection  # noqa: E402
@@ -532,18 +535,57 @@ def _exec_kpis_from_registry() -> list[dict]:
     ]
 
 
+def _error_summary(exc: Exception) -> str:
+    """Name the failure class, never the statement or a row.
+
+    /api/dashboard is UNAUTHENTICATED — only the assistant's tool endpoints are gated —
+    so the response must not echo SQL back to the internet. The full message and stack
+    go to the server log.
+    """
+    sqlstate = getattr(exc, "sqlstate", None)
+    return type(exc).__name__ + (f" ({sqlstate})" if sqlstate else "")
+
+
 def dashboard_data() -> dict:
+    """Run every dashboard query and return the ones that worked.
+
+    A single failing query used to raise straight out of here, 500 the endpoint, and
+    blank the whole dashboard — exactly what happened on 2026-07-10, when Coupler's
+    DROP TABLE ... CASCADE took the clean views down with it and 3 of 41 queries threw.
+    The other 38 were fine.
+
+    Now each query fails alone: its key comes back `[]`, the failure is named in
+    `_errors`, and every other card still renders.
+    """
     conn = get_db_connection()
     out: dict[str, list[dict]] = {}
+    errors: list[dict[str, str]] = []
     try:
         with conn.cursor(row_factory=dict_row) as cur:
             for name, sql in QUERIES.items():
-                cur.execute(sql)
-                out[name] = [{k: _jsonable(v) for k, v in row.items()} for row in cur.fetchall()]
+                try:
+                    cur.execute(sql)
+                    out[name] = [{k: _jsonable(v) for k, v in row.items()} for row in cur.fetchall()]
+                except psycopg.Error as exc:
+                    # A failed statement poisons the transaction — without this rollback
+                    # every later query dies with InFailedSqlTransaction.
+                    conn.rollback()
+                    out[name] = []
+                    errors.append({"query": name, "error": _error_summary(exc)})
+                    log.exception("dashboard query %r failed", name)
     finally:
         conn.close()
+
     # Headline KPIs via registry (one definition — no duplicate SQL).
-    out["exec_kpis"] = _exec_kpis_from_registry()
-    # Development Director KPIs via registry.
-    out["dev_kpis"] = _dev_kpis_from_registry()
+    for key, fn in (("exec_kpis", _exec_kpis_from_registry), ("dev_kpis", _dev_kpis_from_registry)):
+        try:
+            out[key] = fn()
+        except Exception as exc:          # registry metrics open their own connections
+            out[key] = []
+            errors.append({"query": key, "error": _error_summary(exc)})
+            log.exception("dashboard registry block %r failed", key)
+
+    # Surfaced, never swallowed. A silently empty card is how a wrong number reaches
+    # leadership; the frontend renders a banner when this is non-empty.
+    out["_errors"] = errors
     return out

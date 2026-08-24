@@ -72,16 +72,31 @@ def _all(sql: str, params: tuple = ()):
 
 
 def test_reach_is_nulled_when_accounts_engaged_exceeds_it():
-    """hyfin.mke 2026-07: acctEng 6,135 > reach 2,213. You cannot engage with a post
-    you were never shown, so REACH is the broken column — not engagements. 022 had
-    this backwards: it kept the bad reach and discarded a real engagement number."""
+    """hyfin.mke 2026-07: accounts_engaged exceeds reach. You cannot engage with a post
+    you were never shown, so REACH is the broken column — not engagements. 022 had this
+    backwards: it kept the bad reach and discarded a real engagement number.
+
+    Asserts the INVARIANT, not the numbers: July is the month still accumulating, so
+    Coupler moves its values every night (reach 2,213 -> 2,382 overnight on 2026-07-10).
+    A hardcoded figure here fails daily and teaches nobody anything.
+    """
+    raw_reach, raw_eng, raw_acct = _one(
+        "SELECT performance__reach, performance__engagements, engagement__accounts_engaged "
+        "FROM meta_organic.stg_ig_profile_monthly "
+        "WHERE account__account_name='hyfin.mke' AND report__start_date=DATE '2026-07-01'"
+    )
+    assert raw_acct > raw_reach, (
+        "the source no longer reports more engaged accounts than reach — if July's reach "
+        "was fixed upstream, this guard has nothing left to catch and the test should go"
+    )
+
     reach, eng, acct = _one(
         "SELECT reach, engagements, accounts_engaged FROM meta_organic.v_ig_profile_monthly "
         "WHERE account='hyfin.mke' AND month=DATE '2026-07-01'"
     )
     assert reach is None, f"impossible reach leaked through: {reach}"
-    assert eng == 7327, "the real engagement number was discarded"
-    assert acct == 6135, "accounts_engaged is the witness, not the accused — keep it"
+    assert eng == raw_eng, "the real engagement number was discarded"
+    assert acct == raw_acct, "accounts_engaged is the witness, not the accused — keep it"
 
 
 def test_no_surviving_row_reports_more_engagement_than_reach():
