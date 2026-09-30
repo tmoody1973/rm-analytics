@@ -34,7 +34,20 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
  * scalar belongs (e.g. a cell like `{v: 1234}`). React throws error #31 on an object child, and
  * with no error boundary that blanks the ENTIRE app. Coerce any non-primitive to text at the leaf.
  */
-export const asText = (v) => (v != null && typeof v === 'object' ? JSON.stringify(v) : v)
+// sonnet-5-5 sometimes emits a scalar render-tool cell wrapped as {value: x} (an artifact of
+// the union-typed `cell` schema below). Unwrap an exact single-scalar {value} back to the
+// scalar; leave real objects/arrays alone for asText to stringify. Model-agnostic — a bare
+// scalar or null passes straight through, so sonnet-5 output is unaffected.
+export const unwrapValue = (v) =>
+  (v != null && typeof v === 'object' && !Array.isArray(v) &&
+   Object.keys(v).length === 1 && 'value' in v && (v.value == null || typeof v.value !== 'object'))
+    ? v.value
+    : v
+
+export const asText = (v) => {
+  const u = unwrapValue(v)
+  return u != null && typeof u === 'object' ? JSON.stringify(u) : u
+}
 
 export const asPercent = (v) => (typeof v === 'number' ? `${(v * 100).toFixed(v !== 0 && Math.abs(v) < 0.1 ? 1 : 0)}%` : v)
 export const asMoney = (v) => (typeof v === 'number' ? `$${compact.format(v)}` : v)
@@ -79,7 +92,7 @@ export function normalizeChartData(data, xKey, series) {
     // x passes through verbatim (date/category label) — but coerce a stray object so a
     // recharts axis tick never receives one (React #31). Series are numeric via toNumOrNull.
     const out = { [xKey]: asText(row?.[xKey]) }
-    for (const key of series ?? []) out[key] = toNumOrNull(row?.[key])
+    for (const key of series ?? []) out[key] = toNumOrNull(unwrapValue(row?.[key]))
     return out
   })
 }
@@ -144,7 +157,7 @@ export function TableBlock({ title, columns, rows }) {
                     otherwise slide values under the wrong column — silently wrong, which is
                     worse than a blank cell. */}
                 {columns.map((_, c) => {
-                  const v = row?.[c] ?? null
+                  const v = unwrapValue(row?.[c] ?? null)
                   return (
                     <td key={c} className={typeof v === 'number' ? 'num' : undefined}>
                       {v === null ? '—' : typeof v === 'number' ? num(v) : asText(v)}

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
 import {
   chartSchema, tableSchema, normalizeChartData, CHART_TOOL, TABLE_TOOL, TableBlock,
-  asPercent, pickFormatter, asText, RenderBoundary,
+  asPercent, pickFormatter, asText, unwrapValue, RenderBoundary,
 } from './render-tools.jsx'
 import { seriesColor, seriesColors, RM, SERIES } from './components.jsx'
 
@@ -63,6 +63,48 @@ describe('render never crashes on a non-primitive from the model', () => {
   it('RenderBoundary is a real error boundary (has getDerivedStateFromError)', () => {
     expect(typeof RenderBoundary.getDerivedStateFromError).toBe('function')
     expect(RenderBoundary.getDerivedStateFromError()).toEqual({ failed: true })
+  })
+})
+
+// sonnet-5-5 regression (2026-09-30): render_table cells arrived wrapped as {value: x},
+// which asText stringified to the literal `{"value":x}` in every cell. Unwrap the exact
+// single-scalar {value} back to the scalar, everywhere a cell is read.
+describe('unwrapValue — sonnet-5-5 {value:x} cell wrapper', () => {
+  it('unwraps an exact single-scalar {value} to the scalar', () => {
+    expect(unwrapValue({ value: 'Music discovery' })).toBe('Music discovery')
+    expect(unwrapValue({ value: 52 })).toBe(52)
+    expect(unwrapValue({ value: null })).toBe(null)
+  })
+
+  it('leaves bare scalars, null and arrays untouched (sonnet-5 output unaffected)', () => {
+    expect(unwrapValue('x')).toBe('x')
+    expect(unwrapValue(52)).toBe(52)
+    expect(unwrapValue(null)).toBe(null)
+    expect(unwrapValue([1, 2])).toEqual([1, 2])
+  })
+
+  it('does NOT unwrap a real multi-key object or a nested {value:{…}}', () => {
+    expect(unwrapValue({ value: 1, unit: '%' })).toEqual({ value: 1, unit: '%' })
+    expect(unwrapValue({ value: { x: 1 } })).toEqual({ value: { x: 1 } })
+  })
+
+  it('asText unwraps the wrapper instead of printing raw JSON', () => {
+    expect(asText({ value: 'Event promo' })).toBe('Event promo')
+    expect(asText({ value: 42 })).toBe(42)
+  })
+
+  it('TableBlock renders wrapped cells as plain values, numbers right-aligned', () => {
+    const html = renderToStaticMarkup(
+      <TableBlock title="t" columns={['Theme', 'N']} rows={[[{ value: 'Music discovery' }, { value: 52 }]]} />,
+    )
+    expect(html).toContain('Music discovery')
+    expect(html).not.toContain('value')          // no {"value":…} leaked through
+    expect(html).toContain('class="num"')        // 52 recognized as a number
+  })
+
+  it('normalizeChartData coerces a wrapped numeric cell so charts do not blank', () => {
+    const [row] = normalizeChartData([{ month: '2026-01', hyfin: { value: 900 } }], 'month', ['hyfin'])
+    expect(row.hyfin).toBe(900)
   })
 })
 

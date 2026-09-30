@@ -179,6 +179,14 @@ async function* runTwoPhase(args: {
       model,
       messages: gatherMessages,   // base system prompt is a cached leading message (see above)
       tools,
+      // One tool call per step. sonnet-5-5 otherwise fires PARALLEL tool calls, batching
+      // several FRONTEND render tools (render_chart/render_table) into one step — but those
+      // resolve via a browser round-trip that returns one result at a time, so the extras
+      // dangle and the next step throws AI_MissingToolResultsError (the chat went silent).
+      // Sequential calls give each render its own round-trip, as sonnet-5 did. Anthropic's
+      // switch is global (no per-tool option), so data tools run sequentially too — a small
+      // latency cost we accept to keep the assistant answering. No-op on non-Anthropic models.
+      providerOptions: { anthropic: { disableParallelToolUse: true } },
       stopWhen: stepCountIs(maxSteps),
       abortSignal,
       maxRetries: MAX_RETRIES,
