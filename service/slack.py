@@ -46,3 +46,12 @@ def post_success(tag: str, stats: dict[str, Any]) -> None:
 
 def post_failure(tag: str, err: str) -> None:
     _post(f":x: *{tag}* failed: `{err}`")
+
+
+def post_stale(tag: str, stale: list[tuple[str, str, "int | None"]]) -> None:
+    """Alert that one or more sources have gone stale. `stale` = (label, latest, age_days)."""
+    lines = "\n".join(
+        f"• *{label}* — latest {latest}" + (f" ({age}d old)" if age is not None else "")
+        for label, latest, age in stale
+    )
+    _post(f":rotating_light: *{tag}* {len(stale)} source(s) stale:\n{lines}")

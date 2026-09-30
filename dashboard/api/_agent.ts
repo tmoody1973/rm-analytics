@@ -74,6 +74,37 @@ export function shouldFinalize(
   return stepNumber >= maxSteps - 1 || elapsedMs >= softMs;
 }
 
+/**
+ * Make a message history valid for a strict model. sonnet-5-5 rejects two things sonnet-5
+ * tolerated: (1) an assistant tool-call with no matching tool-result (AI_MissingToolResultsError)
+ * — CopilotKit doesn't always write a FRONTEND render tool's browser result back into the
+ * history it replays on the next turn; and (2) a conversation that ends on an assistant turn
+ * ("must end with a user message"). Drop tool-call parts whose result is missing, drop any
+ * assistant message left empty, then trim trailing assistant messages. Pure + unit-tested.
+ */
+export function sanitizeMessages(messages: any[]): any[] {
+  const resultIds = new Set<string>();
+  for (const m of messages) {
+    if (m?.role === "tool" && Array.isArray(m.content)) {
+      for (const p of m.content) if (p?.type === "tool-result" && p.toolCallId) resultIds.add(p.toolCallId);
+    }
+  }
+  const cleaned: any[] = [];
+  for (const m of messages) {
+    if (m?.role === "assistant" && Array.isArray(m.content)) {
+      const content = m.content.filter((p: any) => p?.type !== "tool-call" || resultIds.has(p.toolCallId));
+      if (content.length === 0) continue;   // message was nothing but dangling tool calls → drop it
+      cleaned.push(content === m.content ? m : { ...m, content });
+    } else {
+      cleaned.push(m);
+    }
+  }
+  // A tool-result is sent as a user-role message, so ending on one is fine; ending on an
+  // assistant turn is the prefill 5.5 refuses. Trim trailing assistant messages.
+  while (cleaned.length && cleaned[cleaned.length - 1]?.role === "assistant") cleaned.pop();
+  return cleaned;
+}
+
 export interface BuildAgentStreamOptions {
   /** "anthropic:claude-sonnet-5" (colon form resolveModel accepts). */
   model: string;
@@ -112,33 +143,52 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
   // when we actually call this model, which we catch → graceful error. So resolve eagerly.
   const fallbackModel = opts.fallbackModel ? resolveModel(opts.fallbackModel) : null;
 
-  // useAgentContext() data arrives on input.context — append to the system prompt, as the
-  // classic agent does, so "what am I looking at?" grounding is preserved.
-  let system = opts.systemPrompt;
+  // useAgentContext() data arrives on input.context — kept SEPARATE from the base prompt so
+  // the base (the big, identical-every-request chunk) can be prompt-cached while this small
+  // per-request grounding ("what am I looking at?") stays fresh after the cache breakpoint.
+  const contextParts: string[] = [];
   if (input?.context && input.context.length > 0) {
-    const parts = [opts.systemPrompt, "\n## Context from the application\n"];
-    for (const ctx of input.context) parts.push(`${ctx.description}:\n${ctx.value}\n`);
-    system = parts.join("");
+    contextParts.push("## Context from the application\n");
+    for (const ctx of input.context) contextParts.push(`${ctx.description}:\n${ctx.value}\n`);
   }
+  const contextText = contextParts.length ? contextParts.join("") : undefined;
 
-  // Passed via streamText's `system` param (not unshifted into messages) — cleaner, and it
-  // silences the AI SDK "system message in messages is a prompt-injection risk" warning.
   const convo = convertMessagesToVercelAISDKMessages(input?.messages ?? [], {
     forwardSystemMessages: false,
   });
 
+  // Frontend render tools (render_chart/render_table) ship with NO server-side execute — the
+  // browser draws them. But in OUR server-side gather loop that leaves the tool call with no
+  // result, which (a) throws AI_MissingToolResultsError on the next step and (b) makes the
+  // agent RE-RENDER the same table on the CopilotKit round-trip (the call+result never enter
+  // conversation state, so the model doesn't know it already drew it). The AI SDK's documented
+  // fix is to give the tool a server `execute`; the client still renders because its `render`
+  // callback fires on the tool-call args, not on who supplies the result.
+  const clientTools = convertToolsToVercelAITools(input?.tools ?? []);
+  const RENDER_RESULT: Record<string, string> = {
+    render_chart: "Chart is now displayed to the user. Do NOT call render_chart again for this data, and do not repeat its values in prose.",
+    render_table: "Table is now displayed to the user. Do NOT call render_table again for this data, and do not repeat its rows in prose.",
+  };
+  for (const name of Object.keys(RENDER_RESULT)) {
+    const t = (clientTools as Record<string, any>)[name];
+    if (t && typeof t.execute !== "function") {
+      (clientTools as Record<string, any>)[name] = { ...t, execute: async () => RENDER_RESULT[name] };
+    }
+  }
+
   const tools: ToolSet = {
-    ...convertToolsToVercelAITools(input?.tools ?? []),          // client tools (render_chart/table)
+    ...clientTools,                                              // frontend tools, now with a server execute (above)
     ...convertToolDefinitionsToVercelAITools(opts.serverTools),  // server tools (with execute)
   };
 
-  return { fullStream: runTwoPhase({ model, fallbackModel, system, convo, tools, abortSignal: opts.abortSignal, now, softMs, maxSteps }) };
+  return { fullStream: runTwoPhase({ model, fallbackModel, system: opts.systemPrompt, contextText, convo, tools, abortSignal: opts.abortSignal, now, softMs, maxSteps }) };
 }
 
 async function* runTwoPhase(args: {
   model: ReturnType<typeof resolveModel>;
   fallbackModel: ReturnType<typeof resolveModel> | null;
   system: string;
+  contextText?: string;
   convo: any[];
   tools: ToolSet;
   abortSignal: AbortSignal;
@@ -146,7 +196,21 @@ async function* runTwoPhase(args: {
   softMs: number;
   maxSteps: number;
 }): AsyncIterable<unknown> {
-  const { model, fallbackModel, system, convo, tools, abortSignal, now, softMs, maxSteps } = args;
+  const { model, fallbackModel, system, contextText, convo, tools, abortSignal, now, softMs, maxSteps } = args;
+
+  // Prompt caching: mark the stable base system prompt as an Anthropic ephemeral cache
+  // breakpoint. A breakpoint on the system block caches the whole prefix before it in
+  // Anthropic's canonical order (tools → system → messages), so the tool schemas ride along
+  // for free — no per-tool markers needed. First step writes the cache (~+25% once), every
+  // later step in the gather loop reads it (~-90%). The per-request context follows as a
+  // second, UNcached system message so it never poisons the cache key. Passing system as a
+  // message (not streamText's `system` param) is REQUIRED — the string param can't carry
+  // cacheControl. No-op on non-Anthropic models (providerOptions.anthropic is ignored).
+  const gatherMessages: any[] = [
+    { role: "system", content: system, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
+    ...(contextText ? [{ role: "system", content: contextText }] : []),
+    ...sanitizeMessages(convo),
+  ];
   const startedAt = now();
   let toolCalls = 0, gatherText = 0, synthText = 0;
   let phase: "gather" | "synth" | "fallback" | "error" = "gather";
@@ -155,13 +219,15 @@ async function* runTwoPhase(args: {
   let yieldedText = false;
   let finishEmitted = false;
   let priorMessages: any[] = [];
+  // Prompt-cache proof: cachedInputTokens (AI SDK standardized) = tokens READ from cache;
+  // cacheCreationInputTokens (Anthropic provider metadata) = tokens WRITTEN on the first step.
+  let cacheRead = 0, cacheCreate = 0, inTokens = 0;
 
   try {
     // ─── GATHER: tools available; may answer on its own ───────────────────────────
     const gather = streamText({
       model,
-      system,
-      messages: convo,
+      messages: gatherMessages,   // base system prompt is a cached leading message (see above)
       tools,
       stopWhen: stepCountIs(maxSteps),
       abortSignal,
@@ -183,8 +249,16 @@ async function* runTwoPhase(args: {
         else if (t === "tool-call") toolCalls += 1;
         yield part;
       }
-      // Capture the tool results so synthesis (if needed) can reason over them.
-      try { priorMessages = (await gather.response).messages ?? []; } catch { priorMessages = []; }
+      // Capture the tool results so synthesis (if needed) can reason over them, plus the
+      // gather's token usage so the finally-log can prove the cache is hitting.
+      try {
+        priorMessages = (await gather.response).messages ?? [];
+        const usage = await gather.totalUsage;   // summed across gather steps
+        cacheRead = usage?.cachedInputTokens ?? 0;
+        inTokens = usage?.inputTokens ?? 0;
+        const pm = (await gather.providerMetadata) as { anthropic?: { cacheCreationInputTokens?: number } } | undefined;
+        cacheCreate = pm?.anthropic?.cacheCreationInputTokens ?? 0;
+      } catch { priorMessages = priorMessages.length ? priorMessages : []; }
     } catch (err) {
       // Gather threw (e.g. Overloaded after retries). If it already streamed a partial
       // answer, close it out; otherwise fall through to synthesis/fallback/error.
@@ -198,7 +272,7 @@ async function* runTwoPhase(args: {
     }
 
     // ─── SYNTHESIZE: no tools, guaranteed prose. Try primary, then the fallback model. ─
-    const synthMessages = [...convo, ...priorMessages, { role: "user", content: SYNTHESIS_USER }];
+    const synthMessages = [...sanitizeMessages([...convo, ...priorMessages]), { role: "user", content: SYNTHESIS_USER }];
     const candidates: Array<{ m: ReturnType<typeof resolveModel>; label: "synth" | "fallback" }> = [
       { m: model, label: "synth" },
       ...(fallbackModel ? [{ m: fallbackModel, label: "fallback" as const }] : []),
@@ -242,7 +316,7 @@ async function* runTwoPhase(args: {
     // emitted a finish (partial-then-throw, or the error message), emit one now.
     if (!finishEmitted) yield { type: "finish", finishReason: "stop" };
     // Observability: grep Vercel logs for [agent]. gatherText/synthText tell us the answer landed.
-    console.log("[agent]", JSON.stringify({ phase, ms: now() - startedAt, toolCalls, gatherText, synthText, yieldedText }));
+    console.log("[agent]", JSON.stringify({ phase, ms: now() - startedAt, toolCalls, gatherText, synthText, yieldedText, inTokens, cacheRead, cacheCreate }));
   }
 }
 

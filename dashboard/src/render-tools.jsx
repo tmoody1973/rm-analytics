@@ -34,7 +34,26 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
  * scalar belongs (e.g. a cell like `{v: 1234}`). React throws error #31 on an object child, and
  * with no error boundary that blanks the ENTIRE app. Coerce any non-primitive to text at the leaf.
  */
-export const asText = (v) => (v != null && typeof v === 'object' ? JSON.stringify(v) : v)
+// sonnet-5-5 sometimes emits a scalar render-tool cell wrapped in a single-key object — seen
+// as {value: x} AND {v: x} (an artifact of the union-typed `cell` schema below; the key name
+// varies). Unwrap ANY single-key object whose value is a scalar/null back to that scalar; leave
+// real multi-key objects and arrays for asText to stringify (a visible signal something's off).
+// Model-agnostic — a bare scalar or null passes straight through, so sonnet-5 output is untouched.
+export const unwrapValue = (v) => {
+  if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+    const keys = Object.keys(v)
+    if (keys.length === 1) {
+      const inner = v[keys[0]]
+      if (inner == null || typeof inner !== 'object') return inner
+    }
+  }
+  return v
+}
+
+export const asText = (v) => {
+  const u = unwrapValue(v)
+  return u != null && typeof u === 'object' ? JSON.stringify(u) : u
+}
 
 export const asPercent = (v) => (typeof v === 'number' ? `${(v * 100).toFixed(v !== 0 && Math.abs(v) < 0.1 ? 1 : 0)}%` : v)
 export const asMoney = (v) => (typeof v === 'number' ? `$${compact.format(v)}` : v)
@@ -79,7 +98,7 @@ export function normalizeChartData(data, xKey, series) {
     // x passes through verbatim (date/category label) — but coerce a stray object so a
     // recharts axis tick never receives one (React #31). Series are numeric via toNumOrNull.
     const out = { [xKey]: asText(row?.[xKey]) }
-    for (const key of series ?? []) out[key] = toNumOrNull(row?.[key])
+    for (const key of series ?? []) out[key] = toNumOrNull(unwrapValue(row?.[key]))
     return out
   })
 }
@@ -129,13 +148,26 @@ export function ChartBlock({ title, chart_type, x_key, series, data, y_label, va
 
 export function TableBlock({ title, columns, rows }) {
   if (!columns?.length || !rows?.length) return null
+  // Suppress an all-null table. sonnet-5-5 sometimes fires a SECOND render_table with empty
+  // rows (a stray/placeholder call the "don't call again" directive didn't stop), which drew a
+  // duplicate table of nothing but em-dashes. A table with zero real cells conveys nothing —
+  // and this also hides a mid-stream partial before its data has arrived.
+  const hasData = rows.some((r) => columns.some((_, c) => unwrapValue(r?.[c] ?? null) != null))
+  if (!hasData) return null
+  // Right-align a numeric column's HEADER to match its right-aligned values (.num cells);
+  // otherwise "n" sits far left of the 61/4/6 column beneath it. A column is numeric when
+  // every non-null cell in it is a number.
+  const numericCol = columns.map((_, c) => {
+    const vals = rows.map((r) => unwrapValue(r?.[c] ?? null)).filter((v) => v != null)
+    return vals.length > 0 && vals.every((v) => typeof v === 'number')
+  })
   return (
     <div className="chat-viz">
       <div className="chat-viz-title">{title}</div>
       <div className="chat-viz-scroll">
         <table className="rm">
           <thead>
-            <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
+            <tr>{columns.map((c, i) => <th key={c} className={numericCol[i] ? 'num' : undefined}>{c}</th>)}</tr>
           </thead>
           <tbody>
             {rows.map((row, r) => (
@@ -144,9 +176,9 @@ export function TableBlock({ title, columns, rows }) {
                     otherwise slide values under the wrong column — silently wrong, which is
                     worse than a blank cell. */}
                 {columns.map((_, c) => {
-                  const v = row?.[c] ?? null
+                  const v = unwrapValue(row?.[c] ?? null)
                   return (
-                    <td key={c} className={typeof v === 'number' ? 'num' : undefined}>
+                    <td key={c} className={numericCol[c] ? 'num' : undefined}>
                       {v === null ? '—' : typeof v === 'number' ? num(v) : asText(v)}
                     </td>
                   )

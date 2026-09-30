@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
 import {
   chartSchema, tableSchema, normalizeChartData, CHART_TOOL, TABLE_TOOL, TableBlock,
-  asPercent, pickFormatter, asText, RenderBoundary,
+  asPercent, pickFormatter, asText, unwrapValue, RenderBoundary,
 } from './render-tools.jsx'
 import { seriesColor, seriesColors, RM, SERIES } from './components.jsx'
 
@@ -32,9 +32,10 @@ describe('normalizeChartData', () => {
   // Regression: a model-supplied object x value must NOT reach a recharts tick as an object
   // (React #31 → blank app). It is coerced to text.
   it('coerces a non-primitive x value to text so no object reaches JSX', () => {
-    const [row] = normalizeChartData([{ month: { v: '2026-01' }, engagements: 5 }], 'month', series)
+    // a genuinely malformed multi-key object (not a single-key wrapper) still stringifies
+    const [row] = normalizeChartData([{ month: { a: 1, b: 2 }, engagements: 5 }], 'month', series)
     expect(typeof row.month).toBe('string')
-    expect(row.month).toBe('{"v":"2026-01"}')
+    expect(row.month).toBe('{"a":1,"b":2}')
   })
 })
 
@@ -45,16 +46,16 @@ describe('render never crashes on a non-primitive from the model', () => {
     expect(asText('x')).toBe('x')
     expect(asText(3)).toBe(3)
     expect(asText(null)).toBe(null)
-    expect(asText({ v: 1 })).toBe('{"v":1}')
+    expect(asText({ a: 1, b: 2 })).toBe('{"a":1,"b":2}')   // multi-key object → stringified
     expect(asText([1, 2])).toBe('[1,2]')
   })
 
-  it('TableBlock renders an object cell as text instead of throwing', () => {
+  it('TableBlock renders a malformed multi-key object cell as text instead of throwing', () => {
     const html = renderToStaticMarkup(
-      <TableBlock title="t" columns={['A', 'B']} rows={[['ok', { v: 1234 }]]} />,
+      <TableBlock title="t" columns={['A', 'B']} rows={[['ok', { a: 1, b: 2 }]]} />,
     )
     expect(html).toContain('ok')
-    expect(html).toContain('{&quot;v&quot;:1234}')  // stringified, not thrown
+    expect(html).toContain('{&quot;a&quot;:1,&quot;b&quot;:2}')  // stringified, not thrown
   })
 
   // RenderBoundary is the client-side safety net (error boundaries don't run under SSR, so it
@@ -63,6 +64,50 @@ describe('render never crashes on a non-primitive from the model', () => {
   it('RenderBoundary is a real error boundary (has getDerivedStateFromError)', () => {
     expect(typeof RenderBoundary.getDerivedStateFromError).toBe('function')
     expect(RenderBoundary.getDerivedStateFromError()).toEqual({ failed: true })
+  })
+})
+
+// sonnet-5-5 regression (2026-09-30): render_table cells arrived wrapped as {value: x},
+// which asText stringified to the literal `{"value":x}` in every cell. Unwrap the exact
+// single-scalar {value} back to the scalar, everywhere a cell is read.
+describe('unwrapValue — sonnet-5-5 single-key cell wrapper ({value:x}, {v:x}, …)', () => {
+  it('unwraps any single-scalar-key wrapper to the scalar, whatever the key name', () => {
+    expect(unwrapValue({ value: 'Music discovery' })).toBe('Music discovery')
+    expect(unwrapValue({ value: 52 })).toBe(52)
+    expect(unwrapValue({ value: null })).toBe(null)
+    expect(unwrapValue({ v: 'Theme' })).toBe('Theme')   // the shape actually seen in prod (key 'v')
+    expect(unwrapValue({ v: 15 })).toBe(15)
+  })
+
+  it('leaves bare scalars, null and arrays untouched (sonnet-5 output unaffected)', () => {
+    expect(unwrapValue('x')).toBe('x')
+    expect(unwrapValue(52)).toBe(52)
+    expect(unwrapValue(null)).toBe(null)
+    expect(unwrapValue([1, 2])).toEqual([1, 2])
+  })
+
+  it('does NOT unwrap a real multi-key object or a nested {value:{…}}', () => {
+    expect(unwrapValue({ value: 1, unit: '%' })).toEqual({ value: 1, unit: '%' })
+    expect(unwrapValue({ value: { x: 1 } })).toEqual({ value: { x: 1 } })
+  })
+
+  it('asText unwraps the wrapper instead of printing raw JSON', () => {
+    expect(asText({ value: 'Event promo' })).toBe('Event promo')
+    expect(asText({ value: 42 })).toBe(42)
+  })
+
+  it('TableBlock renders wrapped cells as plain values, numbers right-aligned', () => {
+    const html = renderToStaticMarkup(
+      <TableBlock title="t" columns={['Theme', 'N']} rows={[[{ value: 'Music discovery' }, { value: 52 }]]} />,
+    )
+    expect(html).toContain('Music discovery')
+    expect(html).not.toContain('value')          // no {"value":…} leaked through
+    expect(html).toContain('class="num"')        // 52 recognized as a number
+  })
+
+  it('normalizeChartData coerces a wrapped numeric cell so charts do not blank', () => {
+    const [row] = normalizeChartData([{ month: '2026-01', hyfin: { value: 900 } }], 'month', ['hyfin'])
+    expect(row.hyfin).toBe(900)
   })
 })
 
@@ -153,7 +198,7 @@ describe('TableBlock', () => {
 
   it('renders the title and a header cell per column', () => {
     expect(html).toContain('Top DMAs')
-    expect(html.match(/<th>/g)).toHaveLength(2)
+    expect(html.match(/<th[ >]/g)).toHaveLength(2)   // <th> or <th class="num">, not <thead>
   })
 
   it('renders one body row per row', () => {
@@ -167,6 +212,23 @@ describe('TableBlock', () => {
 
   it('wraps the table in a horizontally scrollable container', () => {
     expect(html).toContain('chat-viz-scroll')
+  })
+
+  // Regression (2026-09-30): a numeric column's header was left-aligned while its values were
+  // right-aligned (.num), so the header sat far left of its number column.
+  it('renders nothing for an all-null table (stray empty duplicate from 5.5)', () => {
+    const html = renderToStaticMarkup(
+      <TableBlock title="empty" columns={['A', 'B']} rows={[[null, null], [null, null]]} />,
+    )
+    expect(html).toBe('')
+  })
+
+  it('right-aligns a numeric column header, leaves a text column header left', () => {
+    const aligned = renderToStaticMarkup(
+      <TableBlock title="t" columns={['Format', 'n']} rows={[['video', 61], ['image', 4]]} />,
+    )
+    expect(aligned).toMatch(/<th class="num">n<\/th>/)
+    expect(aligned).toContain('<th>Format</th>')   // text column header stays left (no class)
   })
 
   // A ragged row would otherwise slide values under the wrong header.

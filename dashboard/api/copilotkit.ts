@@ -65,6 +65,15 @@ const systemPrompt = loadSystemPrompt();
  * ANTHROPIC_MODEL may be set as either:
  *   - bare:        claude-sonnet-5   (we prepend "anthropic:")
  *   - prefixed:    anthropic:claude-sonnet-5   (used as-is)
+ *
+ * On claude-sonnet-5 (decided 2026-09-30). We evaluated claude-sonnet-5-5 on the demo:
+ * caching, the answer guarantee, and the crash fixes all held, but 5.5 RE-RENDERS
+ * frontend tools on CopilotKit's client round-trip (3 agent runs per question), drawing
+ * duplicate tables. sonnet-5 sits through the same round-trips without re-rendering.
+ * Fixing 5.5 cleanly needs a render-tool/loop architecture rework, not a patch, and 5.5's
+ * gain over 5 (same per-token price; caching works on both) is unmeasured — so we stayed
+ * on 5. Everything else from that pass (caching, {value}/{v} unwrap, table alignment,
+ * empty-table guard, sanitizer, render-scope prompt) is model-agnostic and kept.
  */
 function resolveModel(): string {
   const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
