@@ -157,8 +157,27 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
     forwardSystemMessages: false,
   });
 
+  // Frontend render tools (render_chart/render_table) ship with NO server-side execute — the
+  // browser draws them. But in OUR server-side gather loop that leaves the tool call with no
+  // result, which (a) throws AI_MissingToolResultsError on the next step and (b) makes the
+  // agent RE-RENDER the same table on the CopilotKit round-trip (the call+result never enter
+  // conversation state, so the model doesn't know it already drew it). The AI SDK's documented
+  // fix is to give the tool a server `execute`; the client still renders because its `render`
+  // callback fires on the tool-call args, not on who supplies the result.
+  const clientTools = convertToolsToVercelAITools(input?.tools ?? []);
+  const RENDER_RESULT: Record<string, string> = {
+    render_chart: "Chart is now displayed to the user. Do NOT call render_chart again for this data, and do not repeat its values in prose.",
+    render_table: "Table is now displayed to the user. Do NOT call render_table again for this data, and do not repeat its rows in prose.",
+  };
+  for (const name of Object.keys(RENDER_RESULT)) {
+    const t = (clientTools as Record<string, any>)[name];
+    if (t && typeof t.execute !== "function") {
+      (clientTools as Record<string, any>)[name] = { ...t, execute: async () => RENDER_RESULT[name] };
+    }
+  }
+
   const tools: ToolSet = {
-    ...convertToolsToVercelAITools(input?.tools ?? []),          // client tools (render_chart/table)
+    ...clientTools,                                              // frontend tools, now with a server execute (above)
     ...convertToolDefinitionsToVercelAITools(opts.serverTools),  // server tools (with execute)
   };
 
