@@ -29,6 +29,9 @@ export default function App() {
 
   const h = (data && data.header && data.header[0]) || {}
   const filters = { brand, range }
+  // Demo instances (VITE_DEMO_MODE=1) show a persistent banner so no one mistakes the
+  // randomized sample figures for real numbers. Never set in prod → invisible there.
+  const isDemo = import.meta.env.VITE_DEMO_MODE === '1'
 
   // Expose the live view state to the CopilotKit agent so it can answer
   // "what am I looking at?" and "why did this move?" questions grounded
@@ -54,6 +57,16 @@ export default function App() {
 
   return (
     <>
+      {isDemo ? (
+        <div className="demo-banner" role="note" style={{
+          position: 'sticky', top: 0, zIndex: 2000, background: '#b45309', color: '#fff',
+          textAlign: 'center', fontSize: 13, lineHeight: 1.45, padding: '8px 16px',
+        }}>
+          <strong style={{ letterSpacing: '.08em' }}>DEMO ENVIRONMENT</strong> — all revenue,
+          donation and financial figures are randomized sample data, <em>not</em> Radio
+          Milwaukee's actual numbers.
+        </div>
+      ) : null}
       <div className="app">
         <header className="hero">
           <div className="hero-top">
