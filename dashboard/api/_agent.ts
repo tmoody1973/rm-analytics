@@ -229,14 +229,17 @@ async function* runTwoPhase(args: {
       model,
       messages: gatherMessages,   // base system prompt is a cached leading message (see above)
       tools,
-      // One tool call per step. sonnet-5-5 otherwise fires PARALLEL tool calls, batching
-      // several FRONTEND render tools (render_chart/render_table) into one step — but those
-      // resolve via a browser round-trip that returns one result at a time, so the extras
-      // dangle and the next step throws AI_MissingToolResultsError (the chat went silent).
-      // Sequential calls give each render its own round-trip, as sonnet-5 did. Anthropic's
-      // switch is global (no per-tool option), so data tools run sequentially too — a small
-      // latency cost we accept to keep the assistant answering. No-op on non-Anthropic models.
-      providerOptions: { anthropic: { disableParallelToolUse: true } },
+      // sonnet-5-5 provider options (no-op on non-Anthropic fallback models):
+      //  - effort "medium": this is a CHAT + multistep-tool assistant; Anthropic's guide says
+      //    run chat at medium/low, not the default high. High effort makes 5.5 "do more than
+      //    asked" — the root cause of it emitting extra/duplicate render_table calls — and is
+      //    slower. medium cuts that over-eagerness AND lowers latency/cost (the reason we moved
+      //    to 5.5). Set statically so it never invalidates the prompt cache.
+      //  - disableParallelToolUse: one tool call per step, so batched FRONTEND render tools
+      //    can't dangle (browser round-trip returns one result at a time) → no
+      //    AI_MissingToolResultsError. Defensive alongside the server execute the render tools
+      //    now carry; a small latency cost we accept for reliability.
+      providerOptions: { anthropic: { effort: "medium", disableParallelToolUse: true } },
       stopWhen: stepCountIs(maxSteps),
       abortSignal,
       maxRetries: MAX_RETRIES,
