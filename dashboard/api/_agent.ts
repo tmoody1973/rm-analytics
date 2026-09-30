@@ -112,17 +112,16 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
   // when we actually call this model, which we catch → graceful error. So resolve eagerly.
   const fallbackModel = opts.fallbackModel ? resolveModel(opts.fallbackModel) : null;
 
-  // useAgentContext() data arrives on input.context — append to the system prompt, as the
-  // classic agent does, so "what am I looking at?" grounding is preserved.
-  let system = opts.systemPrompt;
+  // useAgentContext() data arrives on input.context — kept SEPARATE from the base prompt so
+  // the base (the big, identical-every-request chunk) can be prompt-cached while this small
+  // per-request grounding ("what am I looking at?") stays fresh after the cache breakpoint.
+  const contextParts: string[] = [];
   if (input?.context && input.context.length > 0) {
-    const parts = [opts.systemPrompt, "\n## Context from the application\n"];
-    for (const ctx of input.context) parts.push(`${ctx.description}:\n${ctx.value}\n`);
-    system = parts.join("");
+    contextParts.push("## Context from the application\n");
+    for (const ctx of input.context) contextParts.push(`${ctx.description}:\n${ctx.value}\n`);
   }
+  const contextText = contextParts.length ? contextParts.join("") : undefined;
 
-  // Passed via streamText's `system` param (not unshifted into messages) — cleaner, and it
-  // silences the AI SDK "system message in messages is a prompt-injection risk" warning.
   const convo = convertMessagesToVercelAISDKMessages(input?.messages ?? [], {
     forwardSystemMessages: false,
   });
@@ -132,13 +131,14 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
     ...convertToolDefinitionsToVercelAITools(opts.serverTools),  // server tools (with execute)
   };
 
-  return { fullStream: runTwoPhase({ model, fallbackModel, system, convo, tools, abortSignal: opts.abortSignal, now, softMs, maxSteps }) };
+  return { fullStream: runTwoPhase({ model, fallbackModel, system: opts.systemPrompt, contextText, convo, tools, abortSignal: opts.abortSignal, now, softMs, maxSteps }) };
 }
 
 async function* runTwoPhase(args: {
   model: ReturnType<typeof resolveModel>;
   fallbackModel: ReturnType<typeof resolveModel> | null;
   system: string;
+  contextText?: string;
   convo: any[];
   tools: ToolSet;
   abortSignal: AbortSignal;
@@ -146,7 +146,21 @@ async function* runTwoPhase(args: {
   softMs: number;
   maxSteps: number;
 }): AsyncIterable<unknown> {
-  const { model, fallbackModel, system, convo, tools, abortSignal, now, softMs, maxSteps } = args;
+  const { model, fallbackModel, system, contextText, convo, tools, abortSignal, now, softMs, maxSteps } = args;
+
+  // Prompt caching: mark the stable base system prompt as an Anthropic ephemeral cache
+  // breakpoint. A breakpoint on the system block caches the whole prefix before it in
+  // Anthropic's canonical order (tools → system → messages), so the tool schemas ride along
+  // for free — no per-tool markers needed. First step writes the cache (~+25% once), every
+  // later step in the gather loop reads it (~-90%). The per-request context follows as a
+  // second, UNcached system message so it never poisons the cache key. Passing system as a
+  // message (not streamText's `system` param) is REQUIRED — the string param can't carry
+  // cacheControl. No-op on non-Anthropic models (providerOptions.anthropic is ignored).
+  const gatherMessages: any[] = [
+    { role: "system", content: system, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
+    ...(contextText ? [{ role: "system", content: contextText }] : []),
+    ...convo,
+  ];
   const startedAt = now();
   let toolCalls = 0, gatherText = 0, synthText = 0;
   let phase: "gather" | "synth" | "fallback" | "error" = "gather";
@@ -160,8 +174,7 @@ async function* runTwoPhase(args: {
     // ─── GATHER: tools available; may answer on its own ───────────────────────────
     const gather = streamText({
       model,
-      system,
-      messages: convo,
+      messages: gatherMessages,   // base system prompt is a cached leading message (see above)
       tools,
       stopWhen: stepCountIs(maxSteps),
       abortSignal,

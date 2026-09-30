@@ -63,11 +63,11 @@ const systemPrompt = loadSystemPrompt();
 /**
  * CopilotKit v2 expects the model in "provider:model-id" format.
  * ANTHROPIC_MODEL may be set as either:
- *   - bare:        claude-sonnet-5   (we prepend "anthropic:")
- *   - prefixed:    anthropic:claude-sonnet-5   (used as-is)
+ *   - bare:        claude-sonnet-5-5   (we prepend "anthropic:")
+ *   - prefixed:    anthropic:claude-sonnet-5-5   (used as-is)
  */
 function resolveModel(): string {
-  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
+  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5";
   return raw.startsWith("anthropic:") ? raw : `anthropic:${raw}`;
 }
 
