@@ -32,9 +32,10 @@ describe('normalizeChartData', () => {
   // Regression: a model-supplied object x value must NOT reach a recharts tick as an object
   // (React #31 → blank app). It is coerced to text.
   it('coerces a non-primitive x value to text so no object reaches JSX', () => {
-    const [row] = normalizeChartData([{ month: { v: '2026-01' }, engagements: 5 }], 'month', series)
+    // a genuinely malformed multi-key object (not a single-key wrapper) still stringifies
+    const [row] = normalizeChartData([{ month: { a: 1, b: 2 }, engagements: 5 }], 'month', series)
     expect(typeof row.month).toBe('string')
-    expect(row.month).toBe('{"v":"2026-01"}')
+    expect(row.month).toBe('{"a":1,"b":2}')
   })
 })
 
@@ -45,16 +46,16 @@ describe('render never crashes on a non-primitive from the model', () => {
     expect(asText('x')).toBe('x')
     expect(asText(3)).toBe(3)
     expect(asText(null)).toBe(null)
-    expect(asText({ v: 1 })).toBe('{"v":1}')
+    expect(asText({ a: 1, b: 2 })).toBe('{"a":1,"b":2}')   // multi-key object → stringified
     expect(asText([1, 2])).toBe('[1,2]')
   })
 
-  it('TableBlock renders an object cell as text instead of throwing', () => {
+  it('TableBlock renders a malformed multi-key object cell as text instead of throwing', () => {
     const html = renderToStaticMarkup(
-      <TableBlock title="t" columns={['A', 'B']} rows={[['ok', { v: 1234 }]]} />,
+      <TableBlock title="t" columns={['A', 'B']} rows={[['ok', { a: 1, b: 2 }]]} />,
     )
     expect(html).toContain('ok')
-    expect(html).toContain('{&quot;v&quot;:1234}')  // stringified, not thrown
+    expect(html).toContain('{&quot;a&quot;:1,&quot;b&quot;:2}')  // stringified, not thrown
   })
 
   // RenderBoundary is the client-side safety net (error boundaries don't run under SSR, so it
@@ -69,11 +70,13 @@ describe('render never crashes on a non-primitive from the model', () => {
 // sonnet-5-5 regression (2026-09-30): render_table cells arrived wrapped as {value: x},
 // which asText stringified to the literal `{"value":x}` in every cell. Unwrap the exact
 // single-scalar {value} back to the scalar, everywhere a cell is read.
-describe('unwrapValue — sonnet-5-5 {value:x} cell wrapper', () => {
-  it('unwraps an exact single-scalar {value} to the scalar', () => {
+describe('unwrapValue — sonnet-5-5 single-key cell wrapper ({value:x}, {v:x}, …)', () => {
+  it('unwraps any single-scalar-key wrapper to the scalar, whatever the key name', () => {
     expect(unwrapValue({ value: 'Music discovery' })).toBe('Music discovery')
     expect(unwrapValue({ value: 52 })).toBe(52)
     expect(unwrapValue({ value: null })).toBe(null)
+    expect(unwrapValue({ v: 'Theme' })).toBe('Theme')   // the shape actually seen in prod (key 'v')
+    expect(unwrapValue({ v: 15 })).toBe(15)
   })
 
   it('leaves bare scalars, null and arrays untouched (sonnet-5 output unaffected)', () => {

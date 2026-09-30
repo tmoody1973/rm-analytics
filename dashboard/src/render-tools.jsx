@@ -34,15 +34,21 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
  * scalar belongs (e.g. a cell like `{v: 1234}`). React throws error #31 on an object child, and
  * with no error boundary that blanks the ENTIRE app. Coerce any non-primitive to text at the leaf.
  */
-// sonnet-5-5 sometimes emits a scalar render-tool cell wrapped as {value: x} (an artifact of
-// the union-typed `cell` schema below). Unwrap an exact single-scalar {value} back to the
-// scalar; leave real objects/arrays alone for asText to stringify. Model-agnostic — a bare
-// scalar or null passes straight through, so sonnet-5 output is unaffected.
-export const unwrapValue = (v) =>
-  (v != null && typeof v === 'object' && !Array.isArray(v) &&
-   Object.keys(v).length === 1 && 'value' in v && (v.value == null || typeof v.value !== 'object'))
-    ? v.value
-    : v
+// sonnet-5-5 sometimes emits a scalar render-tool cell wrapped in a single-key object — seen
+// as {value: x} AND {v: x} (an artifact of the union-typed `cell` schema below; the key name
+// varies). Unwrap ANY single-key object whose value is a scalar/null back to that scalar; leave
+// real multi-key objects and arrays for asText to stringify (a visible signal something's off).
+// Model-agnostic — a bare scalar or null passes straight through, so sonnet-5 output is untouched.
+export const unwrapValue = (v) => {
+  if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+    const keys = Object.keys(v)
+    if (keys.length === 1) {
+      const inner = v[keys[0]]
+      if (inner == null || typeof inner !== 'object') return inner
+    }
+  }
+  return v
+}
 
 export const asText = (v) => {
   const u = unwrapValue(v)
