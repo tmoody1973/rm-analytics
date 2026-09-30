@@ -74,6 +74,37 @@ export function shouldFinalize(
   return stepNumber >= maxSteps - 1 || elapsedMs >= softMs;
 }
 
+/**
+ * Make a message history valid for a strict model. sonnet-5-5 rejects two things sonnet-5
+ * tolerated: (1) an assistant tool-call with no matching tool-result (AI_MissingToolResultsError)
+ * — CopilotKit doesn't always write a FRONTEND render tool's browser result back into the
+ * history it replays on the next turn; and (2) a conversation that ends on an assistant turn
+ * ("must end with a user message"). Drop tool-call parts whose result is missing, drop any
+ * assistant message left empty, then trim trailing assistant messages. Pure + unit-tested.
+ */
+export function sanitizeMessages(messages: any[]): any[] {
+  const resultIds = new Set<string>();
+  for (const m of messages) {
+    if (m?.role === "tool" && Array.isArray(m.content)) {
+      for (const p of m.content) if (p?.type === "tool-result" && p.toolCallId) resultIds.add(p.toolCallId);
+    }
+  }
+  const cleaned: any[] = [];
+  for (const m of messages) {
+    if (m?.role === "assistant" && Array.isArray(m.content)) {
+      const content = m.content.filter((p: any) => p?.type !== "tool-call" || resultIds.has(p.toolCallId));
+      if (content.length === 0) continue;   // message was nothing but dangling tool calls → drop it
+      cleaned.push(content === m.content ? m : { ...m, content });
+    } else {
+      cleaned.push(m);
+    }
+  }
+  // A tool-result is sent as a user-role message, so ending on one is fine; ending on an
+  // assistant turn is the prefill 5.5 refuses. Trim trailing assistant messages.
+  while (cleaned.length && cleaned[cleaned.length - 1]?.role === "assistant") cleaned.pop();
+  return cleaned;
+}
+
 export interface BuildAgentStreamOptions {
   /** "anthropic:claude-sonnet-5" (colon form resolveModel accepts). */
   model: string;
@@ -159,7 +190,7 @@ async function* runTwoPhase(args: {
   const gatherMessages: any[] = [
     { role: "system", content: system, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
     ...(contextText ? [{ role: "system", content: contextText }] : []),
-    ...convo,
+    ...sanitizeMessages(convo),
   ];
   const startedAt = now();
   let toolCalls = 0, gatherText = 0, synthText = 0;
@@ -230,7 +261,7 @@ async function* runTwoPhase(args: {
     }
 
     // ─── SYNTHESIZE: no tools, guaranteed prose. Try primary, then the fallback model. ─
-    const synthMessages = [...convo, ...priorMessages, { role: "user", content: SYNTHESIS_USER }];
+    const synthMessages = [...sanitizeMessages([...convo, ...priorMessages]), { role: "user", content: SYNTHESIS_USER }];
     const candidates: Array<{ m: ReturnType<typeof resolveModel>; label: "synth" | "fallback" }> = [
       { m: model, label: "synth" },
       ...(fallbackModel ? [{ m: fallbackModel, label: "fallback" as const }] : []),
