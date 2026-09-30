@@ -169,6 +169,9 @@ async function* runTwoPhase(args: {
   let yieldedText = false;
   let finishEmitted = false;
   let priorMessages: any[] = [];
+  // Prompt-cache proof: cachedInputTokens (AI SDK standardized) = tokens READ from cache;
+  // cacheCreationInputTokens (Anthropic provider metadata) = tokens WRITTEN on the first step.
+  let cacheRead = 0, cacheCreate = 0, inTokens = 0;
 
   try {
     // ─── GATHER: tools available; may answer on its own ───────────────────────────
@@ -196,8 +199,16 @@ async function* runTwoPhase(args: {
         else if (t === "tool-call") toolCalls += 1;
         yield part;
       }
-      // Capture the tool results so synthesis (if needed) can reason over them.
-      try { priorMessages = (await gather.response).messages ?? []; } catch { priorMessages = []; }
+      // Capture the tool results so synthesis (if needed) can reason over them, plus the
+      // gather's token usage so the finally-log can prove the cache is hitting.
+      try {
+        priorMessages = (await gather.response).messages ?? [];
+        const usage = await gather.totalUsage;   // summed across gather steps
+        cacheRead = usage?.cachedInputTokens ?? 0;
+        inTokens = usage?.inputTokens ?? 0;
+        const pm = (await gather.providerMetadata) as { anthropic?: { cacheCreationInputTokens?: number } } | undefined;
+        cacheCreate = pm?.anthropic?.cacheCreationInputTokens ?? 0;
+      } catch { priorMessages = priorMessages.length ? priorMessages : []; }
     } catch (err) {
       // Gather threw (e.g. Overloaded after retries). If it already streamed a partial
       // answer, close it out; otherwise fall through to synthesis/fallback/error.
@@ -255,7 +266,7 @@ async function* runTwoPhase(args: {
     // emitted a finish (partial-then-throw, or the error message), emit one now.
     if (!finishEmitted) yield { type: "finish", finishReason: "stop" };
     // Observability: grep Vercel logs for [agent]. gatherText/synthText tell us the answer landed.
-    console.log("[agent]", JSON.stringify({ phase, ms: now() - startedAt, toolCalls, gatherText, synthText, yieldedText }));
+    console.log("[agent]", JSON.stringify({ phase, ms: now() - startedAt, toolCalls, gatherText, synthText, yieldedText, inTokens, cacheRead, cacheCreate }));
   }
 }
 
