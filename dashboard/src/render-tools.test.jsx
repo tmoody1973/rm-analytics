@@ -198,7 +198,7 @@ describe('TableBlock', () => {
 
   it('renders the title and a header cell per column', () => {
     expect(html).toContain('Top DMAs')
-    expect(html.match(/<th>/g)).toHaveLength(2)
+    expect(html.match(/<th[ >]/g)).toHaveLength(2)   // <th> or <th class="num">, not <thead>
   })
 
   it('renders one body row per row', () => {
@@ -212,6 +212,16 @@ describe('TableBlock', () => {
 
   it('wraps the table in a horizontally scrollable container', () => {
     expect(html).toContain('chat-viz-scroll')
+  })
+
+  // Regression (2026-09-30): a numeric column's header was left-aligned while its values were
+  // right-aligned (.num), so the header sat far left of its number column.
+  it('right-aligns a numeric column header, leaves a text column header left', () => {
+    const aligned = renderToStaticMarkup(
+      <TableBlock title="t" columns={['Format', 'n']} rows={[['video', 61], ['image', 4]]} />,
+    )
+    expect(aligned).toMatch(/<th class="num">n<\/th>/)
+    expect(aligned).toContain('<th>Format</th>')   // text column header stays left (no class)
   })
 
   // A ragged row would otherwise slide values under the wrong header.

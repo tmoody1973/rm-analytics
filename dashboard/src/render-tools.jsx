@@ -148,13 +148,20 @@ export function ChartBlock({ title, chart_type, x_key, series, data, y_label, va
 
 export function TableBlock({ title, columns, rows }) {
   if (!columns?.length || !rows?.length) return null
+  // Right-align a numeric column's HEADER to match its right-aligned values (.num cells);
+  // otherwise "n" sits far left of the 61/4/6 column beneath it. A column is numeric when
+  // every non-null cell in it is a number.
+  const numericCol = columns.map((_, c) => {
+    const vals = rows.map((r) => unwrapValue(r?.[c] ?? null)).filter((v) => v != null)
+    return vals.length > 0 && vals.every((v) => typeof v === 'number')
+  })
   return (
     <div className="chat-viz">
       <div className="chat-viz-title">{title}</div>
       <div className="chat-viz-scroll">
         <table className="rm">
           <thead>
-            <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
+            <tr>{columns.map((c, i) => <th key={c} className={numericCol[i] ? 'num' : undefined}>{c}</th>)}</tr>
           </thead>
           <tbody>
             {rows.map((row, r) => (
@@ -165,7 +172,7 @@ export function TableBlock({ title, columns, rows }) {
                 {columns.map((_, c) => {
                   const v = unwrapValue(row?.[c] ?? null)
                   return (
-                    <td key={c} className={typeof v === 'number' ? 'num' : undefined}>
+                    <td key={c} className={numericCol[c] ? 'num' : undefined}>
                       {v === null ? '—' : typeof v === 'number' ? num(v) : asText(v)}
                     </td>
                   )
