@@ -63,11 +63,18 @@ const systemPrompt = loadSystemPrompt();
 /**
  * CopilotKit v2 expects the model in "provider:model-id" format.
  * ANTHROPIC_MODEL may be set as either:
- *   - bare:        claude-sonnet-5-5   (we prepend "anthropic:")
- *   - prefixed:    anthropic:claude-sonnet-5-5   (used as-is)
+ *   - bare:        claude-sonnet-5   (we prepend "anthropic:")
+ *   - prefixed:    anthropic:claude-sonnet-5   (used as-is)
+ *
+ * NOTE (2026-09-30): pinned back to claude-sonnet-5. sonnet-5-5 re-tuned tool-call
+ * output — it wraps render_table cells as {value:…} (tables rendered raw JSON) and
+ * batches frontend render tools in one step, which the server loop can't satisfy
+ * (AI_MissingToolResultsError → the chat stopped answering). Prompt caching, the
+ * actual cost win, is model-agnostic and stays. Revisit 5.5 only with the renderer
+ * + loop hardened for the new arg shape.
  */
 function resolveModel(): string {
-  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5";
+  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
   return raw.startsWith("anthropic:") ? raw : `anthropic:${raw}`;
 }
 
