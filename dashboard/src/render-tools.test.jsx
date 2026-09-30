@@ -216,6 +216,13 @@ describe('TableBlock', () => {
 
   // Regression (2026-09-30): a numeric column's header was left-aligned while its values were
   // right-aligned (.num), so the header sat far left of its number column.
+  it('renders nothing for an all-null table (stray empty duplicate from 5.5)', () => {
+    const html = renderToStaticMarkup(
+      <TableBlock title="empty" columns={['A', 'B']} rows={[[null, null], [null, null]]} />,
+    )
+    expect(html).toBe('')
+  })
+
   it('right-aligns a numeric column header, leaves a text column header left', () => {
     const aligned = renderToStaticMarkup(
       <TableBlock title="t" columns={['Format', 'n']} rows={[['video', 61], ['image', 4]]} />,

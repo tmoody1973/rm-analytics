@@ -148,6 +148,12 @@ export function ChartBlock({ title, chart_type, x_key, series, data, y_label, va
 
 export function TableBlock({ title, columns, rows }) {
   if (!columns?.length || !rows?.length) return null
+  // Suppress an all-null table. sonnet-5-5 sometimes fires a SECOND render_table with empty
+  // rows (a stray/placeholder call the "don't call again" directive didn't stop), which drew a
+  // duplicate table of nothing but em-dashes. A table with zero real cells conveys nothing —
+  // and this also hides a mid-stream partial before its data has arrived.
+  const hasData = rows.some((r) => columns.some((_, c) => unwrapValue(r?.[c] ?? null) != null))
+  if (!hasData) return null
   // Right-align a numeric column's HEADER to match its right-aligned values (.num cells);
   // otherwise "n" sits far left of the 61/4/6 column beneath it. A column is numeric when
   // every non-null cell in it is a number.
