@@ -337,6 +337,31 @@ describe("querySqlTool", () => {
     expect(result).toEqual(payload);
   });
 
+  it("caps rows to 60 and adds a 'truncated' note when the query returns too many", async () => {
+    // The cost/timeout fix: a raw-row dump must not reach the model in full.
+    const data = Array.from({ length: 150 }, (_, i) => ({ hour: i, tlh: i * 10 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(
+      makeFetchResponse({ data, meta: { rows: 150, via: "rm_readonly" } })
+    ));
+
+    const result = await querySqlTool.execute({ sql: testSql }) as {
+      data: unknown[];
+      meta: { truncated?: boolean; rows_shown?: number; rows_total?: number; note?: string };
+    };
+
+    expect(result.data).toHaveLength(60);
+    expect(result.meta.truncated).toBe(true);
+    expect(result.meta.rows_total).toBe(150);
+    expect(result.meta.rows_shown).toBe(60);
+    expect(result.meta.note).toMatch(/aggregat/i);
+  });
+
+  it("returns a small result (<=60 rows) unchanged — no truncation", async () => {
+    const payload = { data: [{ a: 1 }, { a: 2 }], meta: { rows: 2 } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(makeFetchResponse(payload)));
+    expect(await querySqlTool.execute({ sql: testSql })).toEqual(payload);
+  });
+
   it("surfaces validator errors as readable {error} — NOT a thrown exception", async () => {
     // This is the critical safety test: the backend rejects INSERT/UPDATE/DDL
     // with a 400 + detail. The tool must convert it to {error} without throwing.

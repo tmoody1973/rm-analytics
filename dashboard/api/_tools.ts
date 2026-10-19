@@ -24,6 +24,13 @@ import { z } from "zod";
 const API_BASE = () =>
   (process.env.API_BASE ?? "https://rm-data-loader.fly.dev").replace(/\/$/, "");
 
+// Max rows query_sql hands back to the MODEL. An aggregated answer is a handful of rows;
+// anything larger means the model pulled raw data, which balloons the prompt and the cost.
+// Above this we truncate and tell it to aggregate (see querySqlTool). 60 covers the common
+// shapes: 4 brands × ~14 months, top-N lists, daypart × brand. The dashboard endpoint keeps
+// its own 1000-row cap; this is assistant-only.
+const ASSISTANT_ROW_CAP = 60;
+
 // Shared secret sent to the gated Fly tool endpoints. Empty string if unset so
 // the header is always present and deterministic (the server rejects a bad token).
 const internalHeaders = (): Record<string, string> => ({
@@ -156,6 +163,30 @@ On error the backend returns {detail: "..."} — this is surfaced as a readable 
       // Surface the backend's validation / permission / db error as a readable message
       const detail = (body as { detail?: string }).detail ?? `HTTP ${res.status}`;
       return { error: detail };
+    }
+
+    // Cap the rows the MODEL sees. The Fly endpoint caps at 1000 rows (fine for the
+    // dashboard), but 1000 raw rows is ~20-30K tokens, and re-sent across the agent loop's
+    // steps that's what ran one streaming question to 265K input tokens / 74s / a timeout
+    // (and burned real money). The assistant should AGGREGATE, not read rows one at a time,
+    // so cap hard here and tell it to. Does not touch the dashboard's use of the endpoint.
+    const rows = (body as { data?: unknown }).data;
+    if (Array.isArray(rows) && rows.length > ASSISTANT_ROW_CAP) {
+      const meta = ((body as { meta?: Record<string, unknown> }).meta) ?? {};
+      return {
+        data: rows.slice(0, ASSISTANT_ROW_CAP),
+        meta: {
+          ...meta,
+          rows_shown: ASSISTANT_ROW_CAP,
+          rows_total: rows.length,
+          truncated: true,
+          note:
+            `Showing the first ${ASSISTANT_ROW_CAP} of ${rows.length} rows. This query returned ` +
+            `too many rows to read one by one — re-run it AGGREGATED (GROUP BY to a reporting ` +
+            `grain + SUM/AVG/COUNT), or add a tighter WHERE / coarser time grain, so the answer ` +
+            `is a handful of rows. Do not try to reason over the raw rows.`,
+        },
+      };
     }
 
     return body;
