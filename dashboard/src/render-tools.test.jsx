@@ -131,6 +131,20 @@ describe('dupHideMask — which duplicate chart nodes to hide', () => {
     expect(dupHideMask([{ title: 'Streaming', msgId: '1' }])).toEqual([false])
   })
 
+  it('hides an exact duplicate drawn twice in the SAME finalized message (5.5 double-render)', () => {
+    expect(dupHideMask([
+      { title: 'Nielsen AQH', msgId: U },
+      { title: 'Nielsen AQH', msgId: U },
+    ])).toEqual([false, true])
+  })
+
+  it('keeps DIFFERENT-title charts in one message (a by-theme/by-format pair)', () => {
+    expect(dupHideMask([
+      { title: 'Engagement by theme', msgId: U },
+      { title: 'Engagement by format', msgId: U },
+    ])).toEqual([false, false])
+  })
+
   it('keeps a same-title chart across two DIFFERENT finalized answers', () => {
     expect(dupHideMask([
       { title: 'Streaming', msgId: '11111111-1111-1111-1111-111111111111' },

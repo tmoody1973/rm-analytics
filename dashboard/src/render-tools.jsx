@@ -247,11 +247,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const vizTitle = (v) => (v.querySelector('.chat-viz-title')?.textContent || '').trim()
 const vizMsgId = (v) => v.closest('[data-message-id]')?.getAttribute('data-message-id') || ''
 
-// Pure decision (unit-tested): given each viz's {title, msgId}, return which to HIDE —
-// a transient (non-UUID message) copy whose title also appears in a finalized (UUID) message.
+// Pure decision (unit-tested): given each viz's {title, msgId} in DOM order, return which to HIDE.
+// Two duplicate patterns, both confirmed live:
+//  (1) a TRANSIENT copy — CopilotKit leaves a leftover streaming message (msgId not a UUID)
+//      next to the finalized one; hide the transient copy when its finalized (UUID) twin exists.
+//  (2) an EXACT duplicate in the SAME message — 5.5 sometimes calls render twice in one turn with
+//      identical args; keep the first, hide the rest with the same (msgId,title).
+// Both are safe: identical title in the same message, or a transient twin of a finalized chart, is
+// never two charts the user wanted. A legit same-title chart in a DIFFERENT answer (different msgId)
+// is untouched, and DIFFERENT titles in one message (a "by theme"/"by format" pair) are untouched.
 export function dupHideMask(items) {
   const finalized = new Set(items.filter((i) => UUID_RE.test(i.msgId)).map((i) => i.title))
-  return items.map((i) => !!i.title && !UUID_RE.test(i.msgId) && finalized.has(i.title))
+  const seenInMsg = new Set()
+  return items.map((i) => {
+    if (!i.title) return false
+    if (!UUID_RE.test(i.msgId) && finalized.has(i.title)) return true   // (1) transient twin
+    const key = i.msgId + '\n' + i.title
+    if (seenInMsg.has(key)) return true                                  // (2) same-message exact dup
+    seenInMsg.add(key)
+    return false
+  })
 }
 
 // DOM glue (verified live: 6 duplicate nodes → 2). Thin on purpose; the logic is dupHideMask.
