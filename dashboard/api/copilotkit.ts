@@ -63,20 +63,18 @@ const systemPrompt = loadSystemPrompt();
 /**
  * CopilotKit v2 expects the model in "provider:model-id" format.
  * ANTHROPIC_MODEL may be set as either:
- *   - bare:        claude-sonnet-5   (we prepend "anthropic:")
- *   - prefixed:    anthropic:claude-sonnet-5   (used as-is)
+ *   - bare:        claude-sonnet-5-5   (we prepend "anthropic:")
+ *   - prefixed:    anthropic:claude-sonnet-5-5   (used as-is)
  *
- * On claude-sonnet-5 (decided 2026-09-30). We evaluated claude-sonnet-5-5 on the demo:
- * caching, the answer guarantee, and the crash fixes all held, but 5.5 RE-RENDERS
- * frontend tools on CopilotKit's client round-trip (3 agent runs per question), drawing
- * duplicate tables. sonnet-5 sits through the same round-trips without re-rendering.
- * Fixing 5.5 cleanly needs a render-tool/loop architecture rework, not a patch, and 5.5's
- * gain over 5 (same per-token price; caching works on both) is unmeasured — so we stayed
- * on 5. Everything else from that pass (caching, {value}/{v} unwrap, table alignment,
- * empty-table guard, sanitizer, render-scope prompt) is model-agnostic and kept.
+ * On claude-sonnet-5-5 (2026-10-19). The 2026-09-30 blocker was 5.5 drawing DUPLICATE charts;
+ * root cause is now understood (CopilotKit leaves a leftover streaming message in the DOM) and
+ * fixed MODEL-AGNOSTICALLY by dedupeChatViz (src/render-tools.jsx). 5.5's other behaviors are
+ * handled too: the parallel-tool crash (disableParallelToolUse + server execute + sanitizer in
+ * api/_agent.ts) and the {value}/{v} cell wrapping (unwrap in render-tools). effort=medium keeps
+ * this chat assistant fast and less over-eager. Prompt caching works on 5.5 the same as on 5.
  */
 function resolveModel(): string {
-  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
+  const raw = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5";
   return raw.startsWith("anthropic:") ? raw : `anthropic:${raw}`;
 }
 

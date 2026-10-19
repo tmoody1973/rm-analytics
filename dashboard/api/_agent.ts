@@ -232,6 +232,14 @@ async function* runTwoPhase(args: {
       model,
       messages: gatherMessages,   // base system prompt is a cached leading message (see above)
       tools,
+      // sonnet-5-5 provider options (no-op on non-Anthropic fallback models):
+      //  - disableParallelToolUse: 5.5 fires PARALLEL tool calls; batched frontend render
+      //    tools otherwise dangle → AI_MissingToolResultsError (the chat went silent). One
+      //    call per step, as sonnet-5 did. Belt-and-suspenders with the server execute.
+      //  - effort "medium": this is a chat + multistep-tool assistant; Anthropic's 5.5 guide
+      //    says run chat at medium, not the default high — faster, less over-eager. Static so
+      //    it never invalidates the prompt cache.
+      providerOptions: { anthropic: { disableParallelToolUse: true, effort: "medium" } },
       stopWhen: stepCountIs(maxSteps),
       abortSignal,
       maxRetries: MAX_RETRIES,
