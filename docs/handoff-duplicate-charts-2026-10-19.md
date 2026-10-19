@@ -1,6 +1,10 @@
 # Handoff — duplicate charts/tables in the assistant (2026-10-19)
 
-> Open this first in the clean session. Two separate problems share one root; one is fixed, one is NOT.
+> **RESOLVED 2026-10-19 (same session).** Both problems are fixed and the assistant is on
+> sonnet-5-5. Root cause of the duplicates: CopilotKit leaves a leftover streaming message in
+> the DOM, and 5.5 sometimes double-renders in one turn — fixed by `dedupeChatViz`/`dupHideMask`
+> (src/render-tools.jsx), found by driving the live board with ego-browser. The notes below are
+> the point-in-time investigation, kept for history. Current record: memory `assistant-duplicate-charts`.
 
 ## TL;DR
 - **FIXED + live:** streaming questions hung + burned ~$100 — `query_sql` fed up to 1000 raw
