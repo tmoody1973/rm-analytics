@@ -138,6 +138,9 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
   const now = opts.now ?? (() => Date.now());
   const softMs = opts.softDeadlineMs ?? SOFT_DEADLINE_MS;
   const maxSteps = opts.maxSteps ?? MAX_STEPS;
+  // Log which model actually ran (opts.model is the resolved "provider:id" string). Lets us
+  // confirm prod is on the model we think it is, from the Vercel logs.
+  console.log("[agent]", JSON.stringify({ event: "start", model: opts.model }));
   const model = resolveModel(opts.model);
   // Resolving is cheap and never hits the network — a missing OPENAI_API_KEY only throws
   // when we actually call this model, which we catch → graceful error. So resolve eagerly.

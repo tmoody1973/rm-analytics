@@ -192,15 +192,19 @@ export function TableBlock({ title, columns, rows }) {
   )
 }
 
-// The handler's return value becomes the tool-result message the model reads on
-// its follow-up turn. Keep it terse and directive — it is the last thing the
-// model sees before writing its sentence.
+// `followUp: false` — render_chart/render_table are SIDE-EFFECT tools (they draw UI and
+// that's it). CopilotKit defaults followUp to TRUE, which re-runs the whole agent after
+// every render call; with our loop that meant several agent runs per question, each
+// re-drawing the chart → DUPLICATE charts (and extra cost). false stops the re-run; the
+// summary sentence still comes from our own gather/synth loop, not a CopilotKit follow-up.
+// The handler's return value is the tool-result the model reads — keep it terse/directive.
 export const CHART_TOOL = {
   name: 'render_chart',
   description:
     'Draw a line or bar chart in the chat. Call this INSTEAD of listing a time series or a ' +
     'cross-brand comparison in prose. Pass data you already fetched from another tool.',
   parameters: chartSchema,
+  followUp: false,
   handler: async () => 'Chart is now displayed to the user. Do not repeat its values in prose.',
 }
 
@@ -210,6 +214,7 @@ export const TABLE_TOOL = {
     'Draw a table in the chat. Call this INSTEAD of writing out rows of data in prose. ' +
     'Pass data you already fetched from another tool.',
   parameters: tableSchema,
+  followUp: false,
   handler: async () => 'Table is now displayed to the user. Do not repeat its rows in prose.',
 }
 
