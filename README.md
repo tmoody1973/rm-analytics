@@ -37,9 +37,9 @@ Director, Digital/Marketing, and Finance/Executive (plus the Board).
 - **Dashboard** — [data.radiomilwaukee.org](https://data.radiomilwaukee.org),
   Clerk sign-in gated to staff + board. Role tabs, brand/date filters, and a
   searchable history of every assistant conversation.
-- **AI data analyst** — in-dashboard assistant (CopilotKit runtime + Claude) with
-  curated metrics, a guarded read-only SQL fallback, schema discovery, and
-  newsletter-content retrieval. Donor data is de-identified; the prompt is
+- **AI data analyst** — in-dashboard assistant (CopilotKit runtime + **Claude Sonnet 5.5**,
+  with prompt caching) with curated metrics, a guarded read-only SQL fallback, schema
+  discovery, and newsletter-content retrieval. Donor data is de-identified; the prompt is
   server-authoritative.
 - **Competitive social intelligence** — RM's own + competitor public accounts
   ingested weekly via socialfetch, Haiku-tagged, and queryable by the assistant
@@ -53,7 +53,7 @@ Director, Digital/Marketing, and Finance/Executive (plus the Board).
 | Loaders / jobs | Python 3.12, pandas, psycopg3 (`psycopg[binary]`), `requests` |
 | Service | FastAPI + Uvicorn on Fly.io (`rm-data-loader`, region `ord`) |
 | Dashboard | Vite + React, Recharts, deployed on Vercel |
-| Assistant | CopilotKit v2 runtime + Anthropic Claude (Haiku for enrichment) |
+| Assistant | CopilotKit v2 runtime + Claude Sonnet 5.5 (prompt-cached); Haiku for enrichment |
 | Auth | Clerk (production) + app-layer email allowlist |
 | Sources | Triton WMS, Funraise, Nielsen, Mailchimp, GA4/Meta (Coupler.io), socialfetch.dev |
 | Inbox / alerting | AgentMail (Triton email → webhook), Slack webhook |
@@ -149,7 +149,8 @@ cites every figure:
   the dashboard renders).
 - **`get_schema`** — allowlisted tables/columns (+ low-cardinality value enumeration).
 - **`query_sql`** — guarded read-only `SELECT`/`WITH` fallback, run as a restricted
-  Neon role (single statement, allowlisted schemas, row + time caps).
+  Neon role (single statement, allowlisted schemas, a 15s timeout; the model sees ≤60
+  rows and is steered to aggregate, so a question can't dump raw rows into the prompt).
 - **`get_newsletter_content`** — full body + topic tags for one Mailchimp newsletter.
 
 Tool endpoints are gated behind `INTERNAL_API_TOKEN`; `/api/dashboard`, `/health`,
@@ -177,6 +178,8 @@ or phone numbers.
 - Bulk inserts use psycopg3 `executemany` in batches of 5000 — no row-by-row inserts.
 - `import psycopg` (psycopg3), never `psycopg2`. Loaders are pure functions with a
   CLI block.
+- CI (GitHub Actions, `.github/workflows/ci.yml`) runs the dashboard tests + build on every
+  PR and push to `main`; `main` is branch-protected and requires that check.
 - Deploy: `flyctl deploy --app rm-data-loader` (backend); `cd dashboard && vercel --prod`
   (frontend). Small PRs off `main`.
 
