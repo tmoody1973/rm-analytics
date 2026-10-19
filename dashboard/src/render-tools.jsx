@@ -235,9 +235,42 @@ export class RenderBoundary extends React.Component {
   }
 }
 
+// Idempotent render: our assistant re-runs several times per question (CopilotKit re-invokes
+// the agent after each frontend-tool call), and each run re-emits the SAME render call with a
+// NEW tool-call id → the same chart/table drawn 3×. Confirmed root cause: "two different
+// tool-call ids, same args = the agent requested it twice" (CopilotKit docs). followUp:false
+// can't stop it (our server-side execute on the same tool name shadows the frontend flag), so
+// we dedup at the render leaf: the FIRST tool-call id to draw a given content owns it; a LATER,
+// DIFFERENT id drawing the identical content is skipped. The same id re-rendering (streaming /
+// status updates) always draws — we key by id, so a real single chart is never suppressed.
+const seenRenders = new Map()            // contentSig -> { id, ts }
+const DEDUP_WINDOW_MS = 120_000          // the re-run burst is seconds; a genuine re-ask later redraws
+
+export const renderSignature = (kind, args) =>
+  `${kind}:${args?.title ?? ''}:${JSON.stringify(args?.data ?? args?.rows ?? null)}`
+
+export function isDuplicateRender(sig, toolCallId, now = Date.now()) {
+  const prev = seenRenders.get(sig)
+  if (prev && prev.id !== toolCallId && now - prev.ts < DEDUP_WINDOW_MS) return true
+  if (!prev || prev.id === toolCallId) seenRenders.set(sig, { id: toolCallId, ts: now })
+  return false
+}
+
 /** Registers both tools. Must be mounted inside <CopilotKit>. Renders nothing itself. */
 export function RenderTools() {
-  useFrontendTool({ ...CHART_TOOL, render: ({ args }) => <RenderBoundary><ChartBlock {...args} /></RenderBoundary> }, [])
-  useFrontendTool({ ...TABLE_TOOL, render: ({ args }) => <RenderBoundary><TableBlock {...args} /></RenderBoundary> }, [])
+  useFrontendTool({
+    ...CHART_TOOL,
+    render: ({ args, toolCallId }) =>
+      isDuplicateRender(renderSignature('chart', args), toolCallId)
+        ? null
+        : <RenderBoundary><ChartBlock {...args} /></RenderBoundary>,
+  }, [])
+  useFrontendTool({
+    ...TABLE_TOOL,
+    render: ({ args, toolCallId }) =>
+      isDuplicateRender(renderSignature('table', args), toolCallId)
+        ? null
+        : <RenderBoundary><TableBlock {...args} /></RenderBoundary>,
+  }, [])
   return null
 }

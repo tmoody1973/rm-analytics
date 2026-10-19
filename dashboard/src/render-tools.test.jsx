@@ -4,6 +4,7 @@ import React from 'react'
 import {
   chartSchema, tableSchema, normalizeChartData, CHART_TOOL, TABLE_TOOL, TableBlock,
   asPercent, pickFormatter, asText, unwrapValue, RenderBoundary,
+  isDuplicateRender, renderSignature,
 } from './render-tools.jsx'
 import { seriesColor, seriesColors, RM, SERIES } from './components.jsx'
 
@@ -108,6 +109,35 @@ describe('unwrapValue — sonnet-5-5 single-key cell wrapper ({value:x}, {v:x}, 
   it('normalizeChartData coerces a wrapped numeric cell so charts do not blank', () => {
     const [row] = normalizeChartData([{ month: '2026-01', hyfin: { value: 900 } }], 'month', ['hyfin'])
     expect(row.hyfin).toBe(900)
+  })
+})
+
+// Duplicate charts/tables (2026-10-19): the agent re-ran several times per question and each
+// run re-emitted the SAME render call with a NEW tool-call id → 3× the same table. Dedup keeps
+// the first, skips later different-id duplicates, but never suppresses a single call re-rendering.
+describe('isDuplicateRender — suppress a re-requested viz from a later agent run', () => {
+  it('builds a content signature from kind + title + data/rows', () => {
+    expect(renderSignature('table', { title: 'T', rows: [[1, 2]] })).toBe('table:T:[[1,2]]')
+    expect(renderSignature('chart', { title: 'C', data: [{ m: 1 }] })).toBe('chart:C:[{"m":1}]')
+  })
+
+  it('renders the first call, skips later DIFFERENT ids with identical content', () => {
+    const sig = renderSignature('table', { title: 'X', rows: [['a']] })
+    expect(isDuplicateRender(sig, 'id-A', 1000)).toBe(false)   // first → render
+    expect(isDuplicateRender(sig, 'id-B', 1500)).toBe(true)    // 2nd run, same data → skip
+    expect(isDuplicateRender(sig, 'id-C', 2000)).toBe(true)    // 3rd → skip
+  })
+
+  it('always renders the SAME id re-rendering (streaming/status updates)', () => {
+    const sig = renderSignature('chart', { title: 'Y', data: [{ m: 1 }] })
+    expect(isDuplicateRender(sig, 'id-A', 1000)).toBe(false)
+    expect(isDuplicateRender(sig, 'id-A', 1200)).toBe(false)   // same id → never suppressed
+  })
+
+  it('redraws a genuine re-ask after the dedup window', () => {
+    const sig = renderSignature('table', { title: 'Z', rows: [[9]] })
+    expect(isDuplicateRender(sig, 'id-A', 1000)).toBe(false)
+    expect(isDuplicateRender(sig, 'id-B', 1000 + 130_000)).toBe(false)  // >120s later → render
   })
 })
 
