@@ -138,6 +138,9 @@ export function buildAgentStream(input: any, opts: BuildAgentStreamOptions) {
   const now = opts.now ?? (() => Date.now());
   const softMs = opts.softDeadlineMs ?? SOFT_DEADLINE_MS;
   const maxSteps = opts.maxSteps ?? MAX_STEPS;
+  // Log which model actually ran (opts.model is the resolved "provider:id" string). Lets us
+  // confirm prod is on the model we think it is, from the Vercel logs.
+  console.log("[agent]", JSON.stringify({ event: "start", model: opts.model }));
   const model = resolveModel(opts.model);
   // Resolving is cheap and never hits the network — a missing OPENAI_API_KEY only throws
   // when we actually call this model, which we catch → graceful error. So resolve eagerly.
@@ -229,6 +232,14 @@ async function* runTwoPhase(args: {
       model,
       messages: gatherMessages,   // base system prompt is a cached leading message (see above)
       tools,
+      // sonnet-5-5 provider options (no-op on non-Anthropic fallback models):
+      //  - disableParallelToolUse: 5.5 fires PARALLEL tool calls; batched frontend render
+      //    tools otherwise dangle → AI_MissingToolResultsError (the chat went silent). One
+      //    call per step, as sonnet-5 did. Belt-and-suspenders with the server execute.
+      //  - effort "medium": this is a chat + multistep-tool assistant; Anthropic's 5.5 guide
+      //    says run chat at medium, not the default high — faster, less over-eager. Static so
+      //    it never invalidates the prompt cache.
+      providerOptions: { anthropic: { disableParallelToolUse: true, effort: "medium" } },
       stopWhen: stepCountIs(maxSteps),
       abortSignal,
       maxRetries: MAX_RETRIES,

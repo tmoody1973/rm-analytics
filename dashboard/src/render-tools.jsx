@@ -9,7 +9,7 @@
  * tool-result message (@copilotkit/core `executeSpecificTool`), and Anthropic
  * rejects empty tool_result content on the follow-up turn.
  */
-import React from 'react'
+import React, { useEffect } from 'react'
 import { z } from 'zod'
 import { useFrontendTool } from '@copilotkit/react-core/v2'
 import {
@@ -192,15 +192,19 @@ export function TableBlock({ title, columns, rows }) {
   )
 }
 
-// The handler's return value becomes the tool-result message the model reads on
-// its follow-up turn. Keep it terse and directive — it is the last thing the
-// model sees before writing its sentence.
+// `followUp: false` — render_chart/render_table are SIDE-EFFECT tools (they draw UI and
+// that's it). CopilotKit defaults followUp to TRUE, which re-runs the whole agent after
+// every render call; with our loop that meant several agent runs per question, each
+// re-drawing the chart → DUPLICATE charts (and extra cost). false stops the re-run; the
+// summary sentence still comes from our own gather/synth loop, not a CopilotKit follow-up.
+// The handler's return value is the tool-result the model reads — keep it terse/directive.
 export const CHART_TOOL = {
   name: 'render_chart',
   description:
     'Draw a line or bar chart in the chat. Call this INSTEAD of listing a time series or a ' +
     'cross-brand comparison in prose. Pass data you already fetched from another tool.',
   parameters: chartSchema,
+  followUp: false,
   handler: async () => 'Chart is now displayed to the user. Do not repeat its values in prose.',
 }
 
@@ -210,6 +214,7 @@ export const TABLE_TOOL = {
     'Draw a table in the chat. Call this INSTEAD of writing out rows of data in prose. ' +
     'Pass data you already fetched from another tool.',
   parameters: tableSchema,
+  followUp: false,
   handler: async () => 'Table is now displayed to the user. Do not repeat its rows in prose.',
 }
 
@@ -230,9 +235,58 @@ export class RenderBoundary extends React.Component {
   }
 }
 
-/** Registers both tools. Must be mounted inside <CopilotKit>. Renders nothing itself. */
+// Duplicate-viz cleaner (2026-10-19, confirmed live via browser inspection). CopilotKit
+// sometimes leaves a leftover STREAMING assistant message in the DOM next to the finalized
+// one, so the same chart/table renders 2–3×. The dupes sit in a transient message whose
+// `data-message-id` is NOT a UUID; the correct single copies sit in the finalized UUID message.
+// Fix: hide a transient copy (.chat-viz in a non-UUID message) ONLY when its finalized twin
+// (same title in a UUID message) exists — so nothing is hidden mid-stream, and a legitimate
+// same-title chart in a DIFFERENT finalized answer is untouched. display:none (not removal)
+// keeps React's own nodes intact; the MutationObserver re-applies after every render.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const vizTitle = (v) => (v.querySelector('.chat-viz-title')?.textContent || '').trim()
+const vizMsgId = (v) => v.closest('[data-message-id]')?.getAttribute('data-message-id') || ''
+
+// Pure decision (unit-tested): given each viz's {title, msgId} in DOM order, return which to HIDE.
+// Two duplicate patterns, both confirmed live:
+//  (1) a TRANSIENT copy — CopilotKit leaves a leftover streaming message (msgId not a UUID)
+//      next to the finalized one; hide the transient copy when its finalized (UUID) twin exists.
+//  (2) an EXACT duplicate in the SAME message — 5.5 sometimes calls render twice in one turn with
+//      identical args; keep the first, hide the rest with the same (msgId,title).
+// Both are safe: identical title in the same message, or a transient twin of a finalized chart, is
+// never two charts the user wanted. A legit same-title chart in a DIFFERENT answer (different msgId)
+// is untouched, and DIFFERENT titles in one message (a "by theme"/"by format" pair) are untouched.
+export function dupHideMask(items) {
+  const finalized = new Set(items.filter((i) => UUID_RE.test(i.msgId)).map((i) => i.title))
+  const seenInMsg = new Set()
+  return items.map((i) => {
+    if (!i.title) return false
+    if (!UUID_RE.test(i.msgId) && finalized.has(i.title)) return true   // (1) transient twin
+    const key = i.msgId + '\n' + i.title
+    if (seenInMsg.has(key)) return true                                  // (2) same-message exact dup
+    seenInMsg.add(key)
+    return false
+  })
+}
+
+// DOM glue (verified live: 6 duplicate nodes → 2). Thin on purpose; the logic is dupHideMask.
+export function dedupeChatViz(root = document) {
+  const vizes = Array.from(root.querySelectorAll('.chat-viz'))
+  const mask = dupHideMask(vizes.map((v) => ({ title: vizTitle(v), msgId: vizMsgId(v) })))
+  vizes.forEach((v, i) => { v.style.display = mask[i] ? 'none' : '' })
+}
+
+/** Registers both render tools AND runs the duplicate-viz cleaner. Mount inside <CopilotKit>. */
 export function RenderTools() {
   useFrontendTool({ ...CHART_TOOL, render: ({ args }) => <RenderBoundary><ChartBlock {...args} /></RenderBoundary> }, [])
   useFrontendTool({ ...TABLE_TOOL, render: ({ args }) => <RenderBoundary><TableBlock {...args} /></RenderBoundary> }, [])
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const run = () => dedupeChatViz()
+    const mo = new MutationObserver(run)
+    mo.observe(document.body, { childList: true, subtree: true })
+    run()
+    return () => mo.disconnect()
+  }, [])
   return null
 }
