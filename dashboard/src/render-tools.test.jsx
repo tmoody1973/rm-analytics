@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
 import {
   chartSchema, tableSchema, normalizeChartData, CHART_TOOL, TABLE_TOOL, TableBlock,
-  asPercent, pickFormatter, asText, unwrapValue, RenderBoundary,
+  asPercent, pickFormatter, asText, unwrapValue, RenderBoundary, dupHideMask,
 } from './render-tools.jsx'
 import { seriesColor, seriesColors, RM, SERIES } from './components.jsx'
 
@@ -108,6 +108,38 @@ describe('unwrapValue — sonnet-5-5 single-key cell wrapper ({value:x}, {v:x}, 
   it('normalizeChartData coerces a wrapped numeric cell so charts do not blank', () => {
     const [row] = normalizeChartData([{ month: '2026-01', hyfin: { value: 900 } }], 'month', ['hyfin'])
     expect(row.hyfin).toBe(900)
+  })
+})
+
+// Duplicate charts (2026-10-19, confirmed by live DOM inspection): CopilotKit leaves a leftover
+// streaming message (non-UUID data-message-id) next to the finalized UUID message, so the same
+// chart renders 2–3×. dupHideMask marks the transient copies to hide — only when a finalized
+// twin exists (so nothing hides mid-stream, and repeats across different answers are kept).
+describe('dupHideMask — which duplicate chart nodes to hide', () => {
+  const U = '9069f4b8-6dea-4b05-babc-000000000000'
+
+  it('hides transient (non-UUID) copies when a finalized (UUID) twin exists', () => {
+    const items = [
+      { title: 'Streaming', msgId: '1' }, { title: 'Nielsen', msgId: '1' },      // transient dupes
+      { title: 'Streaming', msgId: '1' }, { title: 'Nielsen', msgId: '1' },
+      { title: 'Streaming', msgId: U },   { title: 'Nielsen', msgId: U },          // finalized
+    ]
+    expect(dupHideMask(items)).toEqual([true, true, true, true, false, false])
+  })
+
+  it('hides nothing mid-stream (no finalized twin yet)', () => {
+    expect(dupHideMask([{ title: 'Streaming', msgId: '1' }])).toEqual([false])
+  })
+
+  it('keeps a same-title chart across two DIFFERENT finalized answers', () => {
+    expect(dupHideMask([
+      { title: 'Streaming', msgId: '11111111-1111-1111-1111-111111111111' },
+      { title: 'Streaming', msgId: '22222222-2222-2222-2222-222222222222' },
+    ])).toEqual([false, false])
+  })
+
+  it('ignores untitled nodes', () => {
+    expect(dupHideMask([{ title: '', msgId: '1' }, { title: '', msgId: U }])).toEqual([false, false])
   })
 })
 

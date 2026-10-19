@@ -9,7 +9,7 @@
  * tool-result message (@copilotkit/core `executeSpecificTool`), and Anthropic
  * rejects empty tool_result content on the follow-up turn.
  */
-import React from 'react'
+import React, { useEffect } from 'react'
 import { z } from 'zod'
 import { useFrontendTool } from '@copilotkit/react-core/v2'
 import {
@@ -235,9 +235,43 @@ export class RenderBoundary extends React.Component {
   }
 }
 
-/** Registers both tools. Must be mounted inside <CopilotKit>. Renders nothing itself. */
+// Duplicate-viz cleaner (2026-10-19, confirmed live via browser inspection). CopilotKit
+// sometimes leaves a leftover STREAMING assistant message in the DOM next to the finalized
+// one, so the same chart/table renders 2–3×. The dupes sit in a transient message whose
+// `data-message-id` is NOT a UUID; the correct single copies sit in the finalized UUID message.
+// Fix: hide a transient copy (.chat-viz in a non-UUID message) ONLY when its finalized twin
+// (same title in a UUID message) exists — so nothing is hidden mid-stream, and a legitimate
+// same-title chart in a DIFFERENT finalized answer is untouched. display:none (not removal)
+// keeps React's own nodes intact; the MutationObserver re-applies after every render.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const vizTitle = (v) => (v.querySelector('.chat-viz-title')?.textContent || '').trim()
+const vizMsgId = (v) => v.closest('[data-message-id]')?.getAttribute('data-message-id') || ''
+
+// Pure decision (unit-tested): given each viz's {title, msgId}, return which to HIDE —
+// a transient (non-UUID message) copy whose title also appears in a finalized (UUID) message.
+export function dupHideMask(items) {
+  const finalized = new Set(items.filter((i) => UUID_RE.test(i.msgId)).map((i) => i.title))
+  return items.map((i) => !!i.title && !UUID_RE.test(i.msgId) && finalized.has(i.title))
+}
+
+// DOM glue (verified live: 6 duplicate nodes → 2). Thin on purpose; the logic is dupHideMask.
+export function dedupeChatViz(root = document) {
+  const vizes = Array.from(root.querySelectorAll('.chat-viz'))
+  const mask = dupHideMask(vizes.map((v) => ({ title: vizTitle(v), msgId: vizMsgId(v) })))
+  vizes.forEach((v, i) => { v.style.display = mask[i] ? 'none' : '' })
+}
+
+/** Registers both render tools AND runs the duplicate-viz cleaner. Mount inside <CopilotKit>. */
 export function RenderTools() {
   useFrontendTool({ ...CHART_TOOL, render: ({ args }) => <RenderBoundary><ChartBlock {...args} /></RenderBoundary> }, [])
   useFrontendTool({ ...TABLE_TOOL, render: ({ args }) => <RenderBoundary><TableBlock {...args} /></RenderBoundary> }, [])
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const run = () => dedupeChatViz()
+    const mo = new MutationObserver(run)
+    mo.observe(document.body, { childList: true, subtree: true })
+    run()
+    return () => mo.disconnect()
+  }, [])
   return null
 }
