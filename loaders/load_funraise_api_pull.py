@@ -22,7 +22,7 @@ import requests
 
 from _common import hash_email
 
-API_BASE = os.environ.get("FUNRAISE_API_BASE", "https://api.funraise.io")  # TODO confirm
+API_BASE = os.environ.get("FUNRAISE_API_BASE", "https://api.funraise.io")  # confirmed 2026-11-03 (funraise.stoplight.io)
 _TIMEOUT_SEC = 30
 
 # PRIVACY (see schema/006_funraise.sql): donor rows store NO names, raw email, or
@@ -67,8 +67,9 @@ def _api_key() -> str:
 
 def _session() -> requests.Session:
     session = requests.Session()
-    # TODO: confirm the auth scheme (Bearer token vs custom header).
-    session.headers.update({"Authorization": f"Bearer {_api_key()}"})
+    # Funraise auth: key in the X-Api-Key header (confirmed 2026-11-03 via
+    # GET /api/v1/campaignSite/active -> 200; bad key -> 401).
+    session.headers.update({"X-Api-Key": _api_key(), "Accept": "application/json"})
     return session
 
 
