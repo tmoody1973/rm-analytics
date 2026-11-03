@@ -495,7 +495,7 @@ Idempotent — `ON CONFLICT DO UPDATE` everywhere. Safe to re-run.
 │   ├── load_funraise_webhook.py      ← real-time gift webhook (maps nested JSON, hashes email)
 │   ├── load_funraise_backfill.py     ← one-time CSV backfill (idempotent on Funraise Id)
 │   ├── load_funraise_subscriptions.py← recurring-plan CSV -> fact_subscriptions
-│   ├── load_funraise_api_pull.py     ← nightly reconciliation (scaffold; API is AWS SigV4)
+│   ├── load_funraise_api_pull.py     ← nightly reconciliation (scaffold; auth = `X-Api-Key` header, base https://api.funraise.io/api/v1, docs funraise.stoplight.io)
 │   ├── load_nielsen.py               ← Nielsen Vital Signs CSV (unpivot; station from title)
 │   └── load_finance_monthly.py       ← XLSX upload for revenue/budget
 │
